@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROCm Forge - System Protocol</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Highlight.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+    <!-- FontAwesome & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: '#ed1c24', // AMD Red
+                        brandGlow: 'rgba(237, 28, 36, 0.5)',
+                        bgBase: '#0a0a0f',
+                        panelBg: 'rgba(20, 20, 25, 0.7)',
+                        panelBorder: 'rgba(255, 255, 255, 0.08)'
+                    },
+                    fontFamily: {
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        sans: ['Inter', 'sans-serif']
+                    },
+                    boxShadow: {
+                        'neon': '0 0 20px rgba(237, 28, 36, 0.4)',
+                        'neon-blue': '0 0 20px rgba(59, 130, 246, 0.4)',
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            background-color: #050508; 
+            color: #e2e8f0; 
+            font-family: 'Inter', sans-serif;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(237, 28, 36, 0.12), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.12), transparent 25%);
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+        ::selection { background: #ed1c24; color: white; }
+        
+        .code-textarea { font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; }
+        
+        /* Vibrant Glass Panel */
+        .glass-panel { 
+            background: rgba(20, 22, 28, 0.85); 
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08); 
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-panel:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.6), 0 0 20px rgba(237, 28, 36, 0.1);
+        }
+
+        /* Animated Grid Background */
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            pointer-events: none;
+            mask-image: radial-gradient(circle at center, black, transparent 80%);
+            -webkit-mask-image: radial-gradient(circle at center, black, transparent 80%);
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(237,28,36,0.8); }
+        
+        /* Highlight.js override */
+        .hljs { background: #0f1115 !important; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
+
+        /* Metric Cards */
+        .metric-card {
+            background: linear-gradient(145deg, rgba(30,34,43,0.9) 0%, rgba(20,22,28,0.9) 100%);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 2px;
+            background: var(--glow-color);
+            opacity: 0.8;
+            box-shadow: 0 0 10px var(--glow-color);
+        }
+    </style>
+</head>
+<body class="antialiased">
+    
+    <div class="grid-bg"></div>
+
+    <div id="app" class="min-h-screen flex flex-col relative z-10 pt-8 pb-20 px-4 md:px-8">
+        
+        <!-- Vibrant Header -->
+        <div class="max-w-7xl mx-auto w-full mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div class="flex items-center gap-5">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-brand flex items-center justify-center shadow-neon">
+                    <i class="fas fa-microchip text-2xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white mb-1">
+                        ROCm <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-brand">Forge</span>
+                    </h1>
+                    <span class="font-mono text-xs text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> Multi-Agent Migration Engine
+                    </span>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="glass-panel px-5 py-2.5 flex items-center gap-3">
+                    <i class="fab fa-github text-gray-400 text-xl"></i>
+                    <div class="h-4 w-px bg-white/10"></div>
+                    <span class="font-mono text-xs text-gray-300">v2.0.0</span>
+                </div>
+            </div>
+        </div>
+
+        <main class="flex-1 flex flex-col xl:flex-row max-w-7xl w-full mx-auto gap-8">
+            
+            <!-- Left Sidebar (Input) -->
+            <div class="w-full xl:w-[420px] flex flex-col gap-6 shrink-0">
+                <div class="glass-panel p-6 flex flex-col h-full relative group">
+                    
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i class="fas fa-code text-brand"></i> Source Code
+                        </h2>
+                        <span class="px-2.5 py-1 rounded bg-white/5 border border-white/10 font-mono text-[10px] text-gray-400">NVIDIA CUDA</span>
+                    </div>
+                    
+                    <div class="mb-5">
+                        <select v-model="selectedSample" @change="loadSample" class="w-full bg-[#0f1115] border border-white/10 rounded-lg px-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all shadow-inner cursor-pointer">
+                            <option value="" class="text-gray-500">-- Select a Template --</option>
+                            <option v-for="(sample, key) in samples" :key="key" :value="key">📄 {{ sample.title }}</option>
+                        </select>
+                    </div>
+
+                    <div class="flex-1 mb-6 flex flex-col relative">
+                        <textarea 
+                            v-model="sourceCode" 
+                            class="w-full flex-1 min-h-[350px] bg-[#0f1115] border border-white/10 rounded-xl p-5 code-textarea text-gray-300 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none transition-all shadow-inner"
+                            placeholder="Paste your PyTorch / CUDA script here..."
+                            spellcheck="false"></textarea>
+                    </div>
+
+                    <button 
+                        @click="migrateCode" 
+                        :disabled="isMigrating || !sourceCode.trim()"
+                        class="w-full py-4 bg-gradient-to-r from-brand to-red-700 text-white text-sm font-bold uppercase tracking-wider rounded-xl hover:shadow-neon transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-3 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"></div>
+                        <i v-if="isMigrating" class="fas fa-spinner fa-spin relative z-10"></i>
+                        <i v-else class="fas fa-rocket relative z-10"></i>
+                        <span class="relative z-10">{{ isMigrating ? 'Forging ROCm...' : 'Start Migration' }}</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Area (Results) -->
+            <div class="w-full flex-1 flex flex-col gap-6 min-w-0">
+                
+                <div v-if="!result" class="glass-panel flex flex-col items-center justify-center h-full min-h-[600px] text-center relative overflow-hidden">
+                    <div class="w-24 h-24 mb-6 relative">
+                        <div class="absolute inset-0 border-2 border-dashed border-gray-600 rounded-full animate-[spin_10s_linear_infinite]"></div>
+                        <div class="absolute inset-2 border-2 border-dashed border-brand/50 rounded-full animate-[spin_7s_linear_infinite_reverse]"></div>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <i class="fas fa-microchip text-3xl text-gray-500"></i>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-2">Awaiting Source Code</h3>
+                    <p class="text-gray-400 text-sm max-w-sm">Provide NVIDIA CUDA code on the left and our multi-agent system will forge the AMD ROCm equivalent.</p>
+                </div>
+
+                <div v-else class="flex flex-col gap-6 animate-fade-in h-full">
+                    
+                    <!-- Vibrant Status Banner -->
+                    <div class="glass-panel px-6 py-5 flex items-center justify-between border-l-4 border-l-brand relative overflow-hidden">
+                        <div class="absolute inset-0 bg-gradient-to-r from-brand/10 to-transparent pointer-events-none"></div>
+                        <div class="flex items-center gap-5 relative z-10">
+                            <div class="w-10 h-10 rounded-full bg-brand/20 flex items-center justify-center border border-brand/30">
+                                <i class="fas fa-check text-brand"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-lg font-bold text-white mb-0.5">Migration Successful</h2>
+                                <p class="text-sm text-gray-400">Estimated manual effort reduced by <span class="text-brand font-bold">65%</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Glowing Metrics -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="metric-card p-5" style="--glow-color: #3b82f6;">
+                            <div class="text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">Patterns</div>
+                            <div class="text-3xl font-bold text-white">{{ result.analysis.summary.total_patterns }}</div>
+                        </div>
+                        <div class="metric-card p-5" style="--glow-color: #8b5cf6;">
+                            <div class="text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">Transforms</div>
+                            <div class="text-3xl font-bold text-white">{{ result.refactoring_changes.length }}</div>
+                        </div>
+                        <div class="metric-card p-5" style="--glow-color: #10b981;">
+                            <div class="text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">Latency</div>
+                            <div class="text-3xl font-bold text-white">{{ result.total_duration_ms }}<span class="text-sm text-gray-500 ml-1">ms</span></div>
+                        </div>
+                        <div class="metric-card p-5" style="--glow-color: #f59e0b;">
+                            <div class="text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">Complexity</div>
+                            <div class="text-xl font-bold text-yellow-400 mt-2 uppercase">{{ result.analysis.migration_level }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Main Output Area -->
+                    <div class="glass-panel flex-1 flex flex-col overflow-hidden">
+                        
+                        <!-- Premium Tabs -->
+                        <div class="flex border-b border-white/5 bg-black/20 p-2 gap-2 overflow-x-auto">
+                            <button @click="activeTab = 'migrated'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'migrated' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
+                                <i class="fas fa-code"></i> Output Code
+                            </button>
+                            <button @click="activeTab = 'diff'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'diff' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
+                                <i class="fas fa-exchange-alt"></i> Diff Viewer
+                            </button>
+                            <button @click="activeTab = 'changes'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'changes' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
+                                <i class="fas fa-list-check"></i> Audit Log
+                            </button>
+                            <button @click="activeTab = 'deploy'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'deploy' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
+                                <i class="fas fa-box-open"></i> Artifacts
+                            </button>
+                        </div>
+
+                        <div class="p-6 flex-1 overflow-auto bg-[#0a0a0f] min-h-[500px]">
+                            
+                            <!-- Migrated Code Tab -->
+                            <div v-show="activeTab === 'migrated'" class="h-full relative group">
+                                <button @click="copyToClipboard(result.refactored_code)" class="absolute top-4 right-4 px-4 py-2 bg-brand/10 border border-brand/30 text-brand font-semibold text-xs uppercase tracking-wider rounded-lg hover:bg-brand hover:text-white transition-all z-10 flex items-center gap-2">
+                                    <i class="far fa-copy"></i> Copy
+                                </button>
+                                <pre><code class="language-python text-[15px] font-mono leading-relaxed p-6" v-html="highlightCode(result.refactored_code)"></code></pre>
+                            </div>
+
+                            <!-- Diff Tab -->
+                            <div v-show="activeTab === 'diff'" class="h-full flex flex-col lg:flex-row gap-6">
+                                <div class="flex-1 flex flex-col">
+                                    <div class="bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-wider px-4 py-3 rounded-t-lg flex items-center gap-2">
+                                        <i class="fas fa-minus-circle"></i> Original NVIDIA CUDA
+                                    </div>
+                                    <pre class="flex-1 m-0"><code class="language-python text-[14px] font-mono leading-relaxed opacity-80 h-full rounded-t-none" v-html="highlightCode(sourceCode)"></code></pre>
+                                </div>
+                                <div class="flex-1 flex flex-col">
+                                    <div class="bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold uppercase tracking-wider px-4 py-3 rounded-t-lg flex items-center gap-2">
+                                        <i class="fas fa-plus-circle"></i> Migrated AMD ROCm
+                                    </div>
+                                    <pre class="flex-1 m-0"><code class="language-python text-[14px] font-mono leading-relaxed h-full rounded-t-none" v-html="highlightCode(result.refactored_code)"></code></pre>
+                                </div>
+                            </div>
+
+                            <!-- Changes Tab -->
+                            <div v-show="activeTab === 'changes'" class="h-full">
+                                <div class="flex flex-wrap gap-3 mb-6">
+                                    <span class="flex items-center gap-2 font-mono text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-4 py-2 rounded-lg">
+                                        <i class="fas fa-check-circle"></i> Safe ({{ safeCount }})
+                                    </span>
+                                    <span class="flex items-center gap-2 font-mono text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-4 py-2 rounded-lg">
+                                        <i class="fas fa-exclamation-triangle"></i> Review ({{ reviewCount }})
+                                    </span>
+                                    <span class="flex items-center gap-2 font-mono text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-lg">
+                                        <i class="fas fa-wrench"></i> Manual ({{ manualCount }})
+                                    </span>
+                                </div>
+                                
+                                <div class="space-y-4 font-mono text-sm">
+                                    <div v-for="(change, idx) in result.refactoring_changes" :key="idx" 
+                                         class="bg-[#12141a] border border-white/5 rounded-xl overflow-hidden shadow-lg">
+                                        
+                                        <div class="bg-[#1a1c23] px-5 py-3 border-b border-white/5 flex justify-between items-center">
+                                            <div class="text-white font-semibold">{{ change.note }}</div>
+                                            <div class="text-gray-500 text-xs bg-black/50 px-2 py-1 rounded">Line {{ change.line }}</div>
+                                        </div>
+                                        
+                                        <div class="p-5 flex flex-col gap-2">
+                                            <div class="text-red-300 bg-red-500/10 border border-red-500/10 px-4 py-3 rounded-lg flex items-start gap-4">
+                                                <span class="text-red-500 font-bold select-none">-</span>
+                                                <span class="break-all">{{ change.original }}</span>
+                                            </div>
+                                            <div class="text-green-300 bg-green-500/10 border border-green-500/10 px-4 py-3 rounded-lg flex items-start gap-4">
+                                                <span class="text-green-500 font-bold select-none">+</span>
+                                                <span class="break-all">{{ change.modified }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Deploy Tab -->
+                            <div v-show="activeTab === 'deploy'" class="h-full grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div class="flex flex-col gap-3">
+                                    <div class="text-sm font-semibold text-blue-400 flex items-center gap-2">
+                                        <i class="fab fa-docker"></i> Dockerfile
+                                    </div>
+                                    <pre class="flex-1 m-0"><code class="language-dockerfile text-[13px] font-mono h-[250px]" v-text="result.deployment.dockerfile"></code></pre>
+                                </div>
+                                <div class="flex flex-col gap-3">
+                                    <div class="text-sm font-semibold text-purple-400 flex items-center gap-2">
+                                        <i class="fas fa-terminal"></i> deploy_rocm.sh
+                                    </div>
+                                    <pre class="flex-1 m-0"><code class="language-bash text-[13px] font-mono h-[250px]" v-text="result.deployment.deploy_script"></code></pre>
+                                </div>
+                                <div class="flex flex-col gap-3">
+                                    <div class="text-sm font-semibold text-yellow-400 flex items-center gap-2">
+                                        <i class="fas fa-box"></i> requirements.txt
+                                    </div>
+                                    <pre class="flex-1 m-0"><code class="language-plaintext text-[13px] font-mono h-[180px]" v-text="result.deployment.requirements"></code></pre>
+                                </div>
+                                <div class="flex flex-col gap-3">
+                                    <div class="text-sm font-semibold text-green-400 flex items-center gap-2">
+                                        <i class="fas fa-sliders-h"></i> env_setup.sh
+                                    </div>
+                                    <pre class="flex-1 m-0"><code class="language-bash text-[13px] font-mono h-[180px]" v-text="result.deployment.env_setup"></code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    sourceCode: '',
+                    apiKey: '',
+                    isMigrating: false,
+                    result: null,
+                    activeTab: 'migrated',
+                    selectedSample: '',
+                    samples: {
+                        pytorch: {
+                            title: 'PyTorch ResNet Training',
+                            code: `import torch\nimport torch.nn as nn\nimport torchvision.models as models\nimport os\n\nos.environ["CUDA_VISIBLE_DEVICES"] = "0,1"\n\ndef train_model():\n    if not torch.cuda.is_available():\n        raise RuntimeError("CUDA is not available!")\n        \n    device = torch.device("cuda:0")\n    torch.backends.cudnn.benchmark = True\n    \n    model = models.resnet50().cuda()\n    model = nn.DataParallel(model)\n    \n    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)\n    criterion = nn.CrossEntropyLoss().cuda()\n    \n    # Dummy data\n    inputs = torch.randn(32, 3, 224, 224, device=device)\n    labels = torch.randint(0, 1000, (32,), device=device)\n    \n    outputs = model(inputs)\n    loss = criterion(outputs, labels)\n    loss.backward()\n    optimizer.step()\n    \n    print(f"Training on {torch.version.cuda}")`
+                        },
+                        vllm: {
+                            title: 'LLM Inference with vLLM',
+                            code: `from vllm import LLM, SamplingParams\nimport torch\nimport os\n\nos.environ["CUDA_HOME"] = "/usr/local/cuda-12.1"\n\nllm = LLM(\n    model="meta-llama/Llama-2-7b-chat-hf",\n    tensor_parallel_size=2,\n    gpu_memory_utilization=0.90,\n    enforce_eager=False\n)\n\nprompts = ["Hello, my name is"]\nsampling_params = SamplingParams(temperature=0.8, top_p=0.95)\n\noutputs = llm.generate(prompts, sampling_params)\nfor output in outputs:\n    print(output.outputs[0].text)`
+                        },
+                        kernel: {
+                            title: 'Custom CUDA Kernel (C++)',
+                            code: `import torch\nfrom torch.utils.cpp_extension import load_inline\n\ncuda_source = """\n#include <cuda_runtime.h>\n#include <cuda.h>\n\n__global__ void vector_add_kernel(float* a, float* b, float* c, int n) {\n    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < n) {\n        c[idx] = a[idx] + b[idx];\n    }\n}\n\nvoid launch_vector_add(float* a, float* b, float* c, int n) {\n    int threads = 256;\n    int blocks = (n + threads - 1) / threads;\n    vector_add_kernel<<<blocks, threads>>>(a, b, c, n);\n    cudaDeviceSynchronize();\n}\n"""\n\ncpp_source = "void launch_vector_add(float* a, float* b, float* c, int n);"\n\ncustom_module = load_inline(\n    name="custom_cuda_ops",\n    cpp_sources=[cpp_source],\n    cuda_sources=[cuda_source],\n    functions=["launch_vector_add"],\n    verbose=True\n)`
+                        }
+                    }
+                }
+            },
+            computed: {
+                safeCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Safe')).length || 0; },
+                reviewCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Review')).length || 0; },
+                manualCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Manual')).length || 0; }
+            },
+            methods: {
+                loadSample() {
+                    if (this.selectedSample && this.samples[this.selectedSample]) {
+                        this.sourceCode = this.samples[this.selectedSample].code;
+                    } else {
+                        this.sourceCode = '';
+                    }
+                },
+                async migrateCode() {
+                    if (!this.sourceCode.trim()) return;
+                    
+                    this.isMigrating = true;
+                    this.result = null;
+                    
+                    try {
+                        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:8000/api/migrate' : '/api/migrate';
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ code: this.sourceCode, code_type: 'auto', groq_api_key: this.apiKey })
+                        });
+                        
+                        if (!response.ok) {
+                            const err = await response.json();
+                            throw new Error(err.detail || 'Migration failed');
+                        }
+                        
+                        this.result = await response.json();
+                        this.activeTab = 'migrated';
+                        
+                        setTimeout(() => {
+                            document.querySelectorAll('pre code').forEach((block) => {
+                                hljs.highlightElement(block);
+                            });
+                        }, 50);
+                    } catch (error) {
+                        alert(error.message);
+                    } finally {
+                        this.isMigrating = false;
+                    }
+                },
+                highlightCode(code) {
+                    if (!code) return '';
+                    return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                },
+                async copyToClipboard(text) {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        alert('Copied to clipboard!');
+                    } catch (err) {
+                        console.error('Failed to copy: ', err);
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

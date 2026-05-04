@@ -1,0 +1,386 @@
+"""
+ROCm Forge — Code Analyzer Agent
+Scans source code for CUDA-specific patterns, APIs, libraries, env vars,
+and dependencies. Produces a structured analysis report.
+"""
+import re
+from dataclasses import dataclass, field
+from typing import List, Dict, Tuple
+from knowledge.cuda_mappings import (
+    CUDA_TO_HIP_API,
+    CUDA_TO_ROCM_LIBS,
+    PYTORCH_PATTERNS,
+    PIP_PACKAGE_MAPPINGS,
+    ENV_VAR_MAPPINGS,
+    HEADER_MAPPINGS,
+    KNOWN_ISSUES,
+    CLI_TOOL_MAPPINGS,
+    DOCKER_IMAGE_MAPPINGS,
+)
+
+
+@dataclass
+class CUDAPattern:
+    """A detected CUDA pattern in the source code."""
+    pattern: str
+    line_number: int
+    line_content: str
+    category: str  # api, library, env_var, header, pytorch, docker, cli, package
+    severity: str  # info, warning, error
+    rocm_equivalent: str
+    note: str = ""
+
+
+@dataclass
+class AnalysisResult:
+    """Complete analysis of a CUDA source file."""
+    detected_patterns: List[CUDAPattern] = field(default_factory=list)
+    cuda_api_calls: List[CUDAPattern] = field(default_factory=list)
+    library_references: List[CUDAPattern] = field(default_factory=list)
+    env_variables: List[CUDAPattern] = field(default_factory=list)
+    header_includes: List[CUDAPattern] = field(default_factory=list)
+    pytorch_patterns: List[CUDAPattern] = field(default_factory=list)
+    docker_patterns: List[CUDAPattern] = field(default_factory=list)
+    cli_tools: List[CUDAPattern] = field(default_factory=list)
+    pip_packages: List[CUDAPattern] = field(default_factory=list)
+    known_issues: List[Dict] = field(default_factory=list)
+    migration_score: int = 100
+    migration_level: str = "Easy"
+    code_type: str = "python"  # python, cpp, dockerfile, requirements
+    summary: Dict = field(default_factory=dict)
+    trace_log: List[str] = field(default_factory=list)
+
+
+class AnalyzerAgent:
+    """
+    Code Analysis Agent — Scans source code for CUDA-specific patterns
+    and produces a structured migration analysis.
+    """
+    
+    def __init__(self):
+        self.name = "Code Analyzer Agent"
+    
+    def analyze(self, code: str, code_type: str = "auto") -> AnalysisResult:
+        """Run full analysis on the provided code."""
+        result = AnalysisResult()
+        
+        # Auto-detect code type
+        if code_type == "auto":
+            code_type = self._detect_code_type(code)
+        result.code_type = code_type
+        result.trace_log.append(f"🔍 Detected code type: {code_type}")
+        
+        lines = code.split("\n")
+        
+        # Run all analysis passes
+        self._scan_cuda_apis(lines, result)
+        result.trace_log.append(f"📡 Scanned for CUDA Runtime APIs → Found {len(result.cuda_api_calls)} patterns")
+        
+        self._scan_libraries(lines, result)
+        result.trace_log.append(f"📚 Scanned for CUDA libraries → Found {len(result.library_references)} references")
+        
+        self._scan_env_vars(lines, result)
+        result.trace_log.append(f"🔧 Scanned for environment variables → Found {len(result.env_variables)} variables")
+        
+        self._scan_headers(lines, result)
+        result.trace_log.append(f"📄 Scanned for CUDA headers → Found {len(result.header_includes)} includes")
+        
+        self._scan_pytorch_patterns(lines, result)
+        result.trace_log.append(f"🔥 Scanned for PyTorch CUDA patterns → Found {len(result.pytorch_patterns)} patterns")
+        
+        self._scan_docker_patterns(lines, result)
+        result.trace_log.append(f"🐳 Scanned for Docker/NVIDIA patterns → Found {len(result.docker_patterns)} patterns")
+        
+        self._scan_cli_tools(lines, result)
+        result.trace_log.append(f"💻 Scanned for NVIDIA CLI tools → Found {len(result.cli_tools)} references")
+        
+        self._scan_pip_packages(lines, result)
+        result.trace_log.append(f"📦 Scanned for CUDA pip packages → Found {len(result.pip_packages)} packages")
+        
+        self._check_known_issues(code, result)
+        result.trace_log.append(f"⚠️ Checked for known incompatibilities → Found {len(result.known_issues)} issues")
+        
+        # Calculate migration score
+        self._calculate_score(result)
+        result.trace_log.append(f"📊 Migration Score: {result.migration_score}/100 ({result.migration_level})")
+        
+        # Build summary
+        self._build_summary(result)
+        result.trace_log.append(f"✅ Analysis complete — {len(result.detected_patterns)} total patterns detected")
+        
+        return result
+    
+    def _detect_code_type(self, code: str) -> str:
+        """Auto-detect whether the code is Python, C++, Dockerfile, or requirements."""
+        code_lower = code.lower().strip()
+        first_line = code.strip().split("\n")[0].strip().lower() if code.strip() else ""
+        
+        # --- Dockerfile detection FIRST (highest priority) ---
+        # Dockerfiles start with FROM <image> and contain RUN/CMD/EXPOSE/WORKDIR
+        docker_keywords = ["run ", "cmd ", "expose ", "workdir ", "copy ", "env ", "entrypoint "]
+        if first_line.startswith("from ") and any(kw in code_lower for kw in docker_keywords):
+            return "dockerfile"
+        # Also catch comment-prefixed Dockerfiles
+        if any(kw in code_lower for kw in ["from nvidia/", "from rocm/", "from ubuntu:", "from python:"]):
+            if any(kw in code_lower for kw in docker_keywords):
+                return "dockerfile"
+        
+        # --- Python / Inline CUDA disambiguation ---
+        is_python = any(kw in code for kw in ["import torch", "import os", "def ", "class ", "if __name__"])
+        
+        # --- C/C++ CUDA detection ---
+        has_cpp_includes = "#include" in code and (".h>" in code or '.h"' in code)
+        has_cpp_global = "__global__" in code and ("void " in code or "float " in code or "int " in code)
+        
+        if (has_cpp_includes or has_cpp_global) and not is_python:
+            return "cpp"
+        elif (has_cpp_includes or has_cpp_global) and is_python:
+            return "python"
+        
+        # --- Requirements.txt detection ---
+        lines = code.strip().split("\n")
+        non_empty = [l.strip() for l in lines if l.strip() and not l.strip().startswith("#")]
+        if non_empty:
+            pkg_like = sum(1 for l in non_empty if re.match(r'^[\w\-\[\].]+([>=<~!]|$)', l))
+            if pkg_like / len(non_empty) > 0.6:
+                return "requirements"
+        
+        # --- Python detection (default) ---
+        if any(kw in code for kw in ["import ", "def ", "class ", "if __name__"]):
+            return "python"
+        
+        return "python"
+    
+    def _scan_cuda_apis(self, lines: List[str], result: AnalysisResult):
+        """Scan for CUDA Runtime API calls."""
+        for i, line in enumerate(lines, 1):
+            for cuda_api, hip_api in CUDA_TO_HIP_API.items():
+                if cuda_api in line:
+                    pattern = CUDAPattern(
+                        pattern=cuda_api,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="api",
+                        severity="warning",
+                        rocm_equivalent=hip_api,
+                        note=f"Replace {cuda_api} with {hip_api}",
+                    )
+                    result.cuda_api_calls.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_libraries(self, lines: List[str], result: AnalysisResult):
+        """Scan for CUDA library references."""
+        for i, line in enumerate(lines, 1):
+            for cuda_lib, rocm_lib in CUDA_TO_ROCM_LIBS.items():
+                # Use word boundary matching to avoid partial matches
+                if re.search(rf'\b{re.escape(cuda_lib)}\b', line):
+                    pattern = CUDAPattern(
+                        pattern=cuda_lib,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="library",
+                        severity="warning",
+                        rocm_equivalent=rocm_lib,
+                        note=f"Replace {cuda_lib} with {rocm_lib}",
+                    )
+                    result.library_references.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_env_vars(self, lines: List[str], result: AnalysisResult):
+        """Scan for CUDA-specific environment variables."""
+        for i, line in enumerate(lines, 1):
+            for cuda_var, rocm_var in ENV_VAR_MAPPINGS.items():
+                if cuda_var in line:
+                    pattern = CUDAPattern(
+                        pattern=cuda_var,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="env_var",
+                        severity="warning",
+                        rocm_equivalent=rocm_var,
+                        note=f"Change {cuda_var} to {rocm_var}",
+                    )
+                    result.env_variables.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_headers(self, lines: List[str], result: AnalysisResult):
+        """Scan for CUDA header includes."""
+        for i, line in enumerate(lines, 1):
+            for cuda_header, hip_header in HEADER_MAPPINGS.items():
+                if cuda_header in line:
+                    pattern = CUDAPattern(
+                        pattern=cuda_header,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="header",
+                        severity="warning",
+                        rocm_equivalent=hip_header,
+                        note=f"Replace {cuda_header} with {hip_header}",
+                    )
+                    result.header_includes.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_pytorch_patterns(self, lines: List[str], result: AnalysisResult):
+        """Scan for PyTorch CUDA-specific patterns."""
+        for i, line in enumerate(lines, 1):
+            for pt_pattern, info in PYTORCH_PATTERNS.items():
+                if pt_pattern in line:
+                    severity = "info" if info["action"] == "compatible" else "warning"
+                    pattern = CUDAPattern(
+                        pattern=pt_pattern,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="pytorch",
+                        severity=severity,
+                        rocm_equivalent=info["replacement"],
+                        note=info["note"],
+                    )
+                    result.pytorch_patterns.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_docker_patterns(self, lines: List[str], result: AnalysisResult):
+        """Scan for Docker NVIDIA-specific patterns."""
+        for i, line in enumerate(lines, 1):
+            for nvidia_image, rocm_image in DOCKER_IMAGE_MAPPINGS.items():
+                if nvidia_image in line:
+                    pattern = CUDAPattern(
+                        pattern=nvidia_image,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="docker",
+                        severity="warning",
+                        rocm_equivalent=rocm_image,
+                        note=f"Replace NVIDIA base image with ROCm equivalent",
+                    )
+                    result.docker_patterns.append(pattern)
+                    result.detected_patterns.append(pattern)
+            
+            # Check for NVIDIA-specific Docker env vars
+            nvidia_docker_patterns = {
+                "NVIDIA_VISIBLE_DEVICES": "Use --device=/dev/kfd --device=/dev/dri instead",
+                "NVIDIA_DRIVER_CAPABILITIES": "Not needed for ROCm",
+                "nvidia-smi": "Use rocm-smi",
+            }
+            for nv_pattern, note in nvidia_docker_patterns.items():
+                if nv_pattern in line:
+                    pattern = CUDAPattern(
+                        pattern=nv_pattern,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="docker",
+                        severity="warning",
+                        rocm_equivalent=note,
+                        note=note,
+                    )
+                    result.docker_patterns.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_cli_tools(self, lines: List[str], result: AnalysisResult):
+        """Scan for NVIDIA CLI tool references."""
+        for i, line in enumerate(lines, 1):
+            for nv_tool, rocm_tool in CLI_TOOL_MAPPINGS.items():
+                if nv_tool in line:
+                    pattern = CUDAPattern(
+                        pattern=nv_tool,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="cli",
+                        severity="info",
+                        rocm_equivalent=rocm_tool,
+                        note=f"Use {rocm_tool} instead of {nv_tool}",
+                    )
+                    result.cli_tools.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _scan_pip_packages(self, lines: List[str], result: AnalysisResult):
+        """Scan for CUDA-specific pip packages."""
+        for i, line in enumerate(lines, 1):
+            for pkg, info in PIP_PACKAGE_MAPPINGS.items():
+                if pkg in line:
+                    action = info["action"]
+                    if action == "remove":
+                        severity = "warning"
+                        equiv = "Remove (provided by ROCm)"
+                    elif action == "replace":
+                        severity = "warning"
+                        equiv = info.get("replacement", "See docs")
+                    elif action == "warning":
+                        severity = "warning"
+                        equiv = info.get("note", "Check compatibility")
+                    else:
+                        severity = "info"
+                        equiv = info.get("note", "Compatible")
+                    
+                    pattern = CUDAPattern(
+                        pattern=pkg,
+                        line_number=i,
+                        line_content=line.strip(),
+                        category="package",
+                        severity=severity,
+                        rocm_equivalent=equiv,
+                        note=info.get("note", info.get("replacement", "")),
+                    )
+                    result.pip_packages.append(pattern)
+                    result.detected_patterns.append(pattern)
+    
+    def _check_known_issues(self, code: str, result: AnalysisResult):
+        """Check for known incompatibilities."""
+        for issue_key, issue in KNOWN_ISSUES.items():
+            if re.search(issue["pattern"], code, re.IGNORECASE):
+                result.known_issues.append({
+                    "key": issue_key,
+                    "severity": issue["severity"],
+                    "message": issue["message"],
+                    "fix": issue["fix"],
+                })
+    
+    def _calculate_score(self, result: AnalysisResult):
+        """Calculate migration complexity score (100 = easiest)."""
+        score = 100
+        
+        # Deductions
+        score -= len(result.cuda_api_calls) * 3          # -3 per CUDA API call
+        score -= len(result.library_references) * 5       # -5 per library reference
+        score -= len(result.env_variables) * 2            # -2 per env var
+        score -= len(result.header_includes) * 4          # -4 per header include
+        score -= len(result.docker_patterns) * 3          # -3 per Docker pattern
+        score -= len(result.known_issues) * 8             # -8 per known issue
+        
+        # Bonus for compatible PyTorch patterns
+        compatible = sum(1 for p in result.pytorch_patterns if "compatible" in p.note.lower() or p.severity == "info")
+        score += compatible * 1  # Small bonus for already-compatible patterns
+        
+        # Clamp
+        score = max(0, min(100, score))
+        result.migration_score = score
+        
+        # Level
+        if score >= 85:
+            result.migration_level = "Easy"
+        elif score >= 60:
+            result.migration_level = "Moderate"
+        elif score >= 35:
+            result.migration_level = "Complex"
+        else:
+            result.migration_level = "Advanced"
+    
+    def _build_summary(self, result: AnalysisResult):
+        """Build summary statistics."""
+        result.summary = {
+            "total_patterns": len(result.detected_patterns),
+            "cuda_apis": len(result.cuda_api_calls),
+            "libraries": len(result.library_references),
+            "env_vars": len(result.env_variables),
+            "headers": len(result.header_includes),
+            "pytorch": len(result.pytorch_patterns),
+            "docker": len(result.docker_patterns),
+            "cli_tools": len(result.cli_tools),
+            "packages": len(result.pip_packages),
+            "known_issues": len(result.known_issues),
+            "migration_score": result.migration_score,
+            "migration_level": result.migration_level,
+            "code_type": result.code_type,
+            "warnings": sum(1 for p in result.detected_patterns if p.severity == "warning"),
+            "errors": sum(1 for p in result.detected_patterns if p.severity == "error"),
+            "compatible": sum(1 for p in result.detected_patterns if p.severity == "info"),
+        }
