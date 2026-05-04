@@ -8,6 +8,8 @@
   [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
   [![ROCm](https://img.shields.io/badge/ROCm_6.2-Fine--Tuned-ed1c24?style=for-the-badge&logo=amd)](https://rocm.docs.amd.com/)
   [![Llama3](https://img.shields.io/badge/CodeLlama_7B-LoRA-blueviolet?style=for-the-badge)](https://huggingface.co/codellama)
+  <br />
+  [![Live Demo](https://img.shields.io/badge/Live_Demo-rocm--forge.onrender.com-success?style=for-the-badge&logo=render)](https://rocm-forge.onrender.com)
 </div>
 
 <br />
@@ -26,22 +28,30 @@ By combining **Deterministic AST Parsing** for reliable core API mapping, **LLM 
 
 ## 🧠 Core Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     ROCm Forge Pipeline                      │
-│                                                              │
-│  ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌─────────────┐  │
-│  │Analyzer │→ │ Checker │→ │Refactorer│→ │  Verifier   │  │
-│  │ Agent   │  │  Agent  │  │  Agent   │  │   Agent     │  │
-│  └─────────┘  └─────────┘  └──────────┘  └─────────────┘  │
-│       │                          ↑               │          │
-│       ↓                          │               ↓          │
-│  ┌─────────────────┐    ┌───────────────┐  ┌──────────┐    │
-│  │  LLM Explainer  │    │  Fine-Tuned   │  │ Deployer │    │
-│  │  (Groq/Llama3)  │    │  CodeLlama    │  │  Agent   │    │
-│  │  Cloud Mode     │    │  AMD GPU Mode │  │          │    │
-│  └─────────────────┘    └───────────────┘  └──────────┘    │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    classDef default fill:#1e1e24,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef highlight fill:#ed1c24,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef database fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#fff;
+
+    A[CUDA Source Code] --> B(Analyzer Agent)
+    B --> C(Checker Agent)
+    C --> D(Refactorer Agent)
+    D --> E(Verifier Agent)
+    E --> F[ROCm Source Code]
+
+    B -.-> G[(Knowledge Base)]
+    C -.-> G
+
+    F --> H(Deployer Agent)
+    H --> I[Dockerfile & Scripts]
+
+    subgraph "AI Explainer"
+        D -.-> J{LLM Agent<br>Groq / CodeLlama}
+    end
+
+    class F,I highlight;
+    class G database;
 ```
 
 ### 6-Agent Pipeline
