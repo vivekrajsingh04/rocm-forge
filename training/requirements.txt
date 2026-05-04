@@ -1,0 +1,16 @@
+# ROCm Forge — Fine-Tuning Dependencies
+# Install on AMD Developer Cloud (MI300X / ROCm 6.2)
+#
+# Step 1: Install PyTorch ROCm
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+#
+# Step 2: Install training dependencies
+#   pip install -r training/requirements.txt
+
+transformers>=4.40.0
+datasets>=2.18.0
+peft>=0.10.0
+accelerate>=0.28.0
+bitsandbytes>=0.43.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
