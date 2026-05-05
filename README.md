@@ -65,7 +65,7 @@ graph TD
 
 ### 9-Agent Pipeline
 
-1. **Analyzer Agent** — Detects code type (Python/PyTorch, C++ Kernel, Dockerfile) and extracts CUDA APIs.
+1. **Analyzer Agent** — Detects code type (Python/PyTorch, C++ Kernel, Dockerfile) and extracts CUDA APIs. For Python, runs **AST-level analysis** using Python's `ast` module — not regex, real syntax tree traversal.
 2. **Hardware-Aware Scanner** — Detects architecture-level issues: warp → wavefront mismatches, Tensor Core → MFMA intrinsic lowering, PTX assembly.
 3. **Exploration Scanner** — Curiosity-driven scan for *implicit* CUDA assumptions (hardcoded `32`, SM counts, L2 cache hints) that regex alone misses.
 4. **Checker Agent** — Maps NVIDIA APIs to `hip` / `MIOpen` equivalents using an internal knowledge base.
