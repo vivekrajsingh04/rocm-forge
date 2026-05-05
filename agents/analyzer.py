@@ -19,6 +19,7 @@ from knowledge.cuda_mappings import (
     HARDWARE_AWARE_MAPPINGS,
     IMPLICIT_CUDA_PATTERNS,
 )
+from agents.ast_transformer import ASTTransformer
 
 
 @dataclass
@@ -54,6 +55,7 @@ class AnalysisResult:
     migration_level: str = "Easy"
     code_type: str = "python"  # python, cpp, dockerfile, requirements
     summary: Dict = field(default_factory=dict)
+    ast_findings: List[Dict] = field(default_factory=list)  # AST-level analysis results
     trace_log: List[str] = field(default_factory=list)
 
 
@@ -113,6 +115,10 @@ class AnalyzerAgent:
         # Curiosity-driven exploration scan (implicit assumptions)
         self._scan_implicit_assumptions(lines, code, result)
         result.trace_log.append(f"🧪 Exploration Scan → Found {len(result.implicit_assumptions)} implicit CUDA assumptions")
+        
+        # AST-level analysis (Python only — real compiler-level understanding)
+        if result.code_type == "python":
+            self._run_ast_analysis(code, result)
         
         # Build saliency map (per-line risk scoring)
         self._build_saliency_map(lines, result)
@@ -500,6 +506,7 @@ class AnalyzerAgent:
             "known_issues": len(result.known_issues),
             "hardware_issues": len(result.hardware_issues),
             "implicit_assumptions": len(result.implicit_assumptions),
+            "ast_findings": len(result.ast_findings),
             "critical_lines": sum(1 for v in result.saliency_map.values() if v == "critical"),
             "migration_score": result.migration_score,
             "migration_health": result.migration_health,
@@ -509,3 +516,19 @@ class AnalyzerAgent:
             "errors": sum(1 for p in result.detected_patterns if p.severity == "error"),
             "compatible": sum(1 for p in result.detected_patterns if p.severity == "info"),
         }
+
+    def _run_ast_analysis(self, code: str, result: AnalysisResult):
+        """
+        Run AST-level analysis on Python code using Python's ast module.
+        This is a real compiler-level pass — not regex.
+        """
+        transformer = ASTTransformer()
+        findings, trace = transformer.analyze(code)
+        result.ast_findings = findings
+        result.trace_log.extend(trace)
+
+        # Count critical AST findings
+        critical = sum(1 for f in findings if f.get("severity") == "critical")
+        if critical > 0:
+            result.trace_log.append(f"🌳 AST: {critical} critical finding(s) — embedded kernels require manual review")
+

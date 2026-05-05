@@ -71,6 +71,7 @@ async def migrate_code(request: MigrationRequest):
                     } for p in result.analysis.hardware_issues
                 ],
                 "implicit_assumptions": result.analysis.implicit_assumptions,
+                "ast_findings": result.analysis.ast_findings,
                 "saliency_map": result.analysis.saliency_map,
                 "detected_patterns": [
                     {
