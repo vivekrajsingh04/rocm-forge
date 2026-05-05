@@ -1,19 +1,19 @@
 # ROCm Forge — 3.5 Minute Presentation Script
 
-> **Total time: 3 min 30 sec**
+> **Total time: 3 min 30 sec**  
 > Structure: Problem (30s) → Solution (30s) → Live Demo (1.5 min) → Architecture (30s) → Close (30s)
 
 ---
 
 ## 🎬 SLIDE 1: The Problem (0:00 – 0:30)
 
-**[Show a stat slide: "$3 Trillion+ in CUDA code exists today"]**
+**[Show a stat slide or just the empty ROCm Forge UI]**
 
-> *"The biggest barrier to AMD GPU adoption isn't hardware — it's software.*
+> *"The biggest bottleneck to AMD GPU adoption isn't hardware — it's software.*
 >
-> *There are billions of lines of CUDA code in production right now. Every AI company, every research lab, every cloud provider has CUDA baked into their stack. Migrating this code to AMD's ROCm is manual, error-prone, and takes weeks.*
+> *There are billions of lines of CUDA code in production. Every AI company, every research lab, every cloud provider has CUDA baked into their stack. Migrating this to AMD's ROCm is manual, tedious, and error-prone.*
 >
-> *AMD's own hipify tool handles the easy stuff — string replacements. But what about the HARD stuff? Hardcoded warp sizes. Tensor Core intrinsics. Inline PTX assembly. That's where everything breaks.*
+> *AMD's own hipify tool handles basic string replacements. But what about hardcoded warp sizes? Tensor Core intrinsics? Inline PTX assembly? That's where everything breaks silently.*
 >
 > *We built ROCm Forge to solve this."*
 
@@ -21,17 +21,17 @@
 
 ## 🎬 SLIDE 2: The Solution — One Line (0:30 – 1:00)
 
-**[Switch to ROCm Forge UI in browser]**
+**[Switch to ROCm Forge UI — show the header: "9-Agent Migration Engine"]**
 
-> *"ROCm Forge is a 9-agent AI pipeline that doesn't just translate CUDA syntax — it understands GPU HARDWARE.*
+> *"ROCm Forge is a 9-agent AI pipeline that doesn't just translate syntax — it understands GPU hardware.*
 >
-> *It has three layers that no other tool has:*
+> *Three things make it different from any other tool:*
 >
-> *First — a Hardware-Aware Scanner that catches warp-vs-wavefront bugs that will SILENTLY fail on AMD.*
+> *First — a Hardware-Aware Scanner that catches warp-vs-wavefront bugs that SILENTLY produce wrong results on AMD.*
 >
-> *Second — a Verification Pass with rescue branches that re-scans migrated code and auto-fixes anything it missed.*
+> *Second — a Verification Pass with rescue branches. If the first pass leaves any CUDA residue, the system self-heals and runs again.*
 >
-> *Third — a Build Error Copilot that tells you exactly what will break BEFORE you even compile.*
+> *Third — a Build Error Copilot that tells you exactly what will break BEFORE you compile.*
 >
 > *Let me show you."*
 
@@ -41,76 +41,86 @@
 
 ### Demo Move 1: Start Easy (1:00 – 1:20)
 
-**[Click Sample 1: PyTorch Training]**
+**[Select "PyTorch ResNet Training" from the dropdown → Click MIGRATE]**
 
-> *"Let's start with a standard PyTorch training script. CUDA env vars, cuDNN settings, mixed precision."*
+> *"Let's start with a standard PyTorch training script."*
 
-**[Click MIGRATE → Wait for agent trace to animate]**
+**[Point to the metrics that appear]**
 
-> *"Watch the 9 agents fire — Analyzer, Hardware Scanner, Exploration Scanner, Refactorer, Verification Pass, Safety Check, Health Monitor, Build Copilot, and LLM. All in under a second."*
+> *"Watch the 9 agents fire. Migration Score: 72. AMD Readiness: 95%. The Risk Heatmap shows almost everything is Low Risk — green. This is an easy migration."*
 
-> *"Migration score: 72 out of 100. Health: 95%. This is an easy migration — mostly string replacements. Every other tool can do this."*
+**[Click "Agent Trace" tab]**
 
-### Demo Move 2: The HARD One — This Is Where We Win (1:20 – 2:30)
+> *"In the Agent Trace tab, you can see exactly what each agent did — the Analyzer found 12 CUDA patterns, the Refactorer applied 8 safe transforms, and the Verification Pass confirmed zero leftover CUDA artifacts."*
 
-**[Click Sample 6: Tensor Core WMMA Kernel]**
+### Demo Move 2: The HARD One (1:20 – 2:30)
 
-> *"NOW let's do something that will actually break. This is an NVIDIA Tensor Core GEMM kernel using WMMA intrinsics. This is the HARDEST possible migration — standard hipify will completely fail on this."*
+**[Select "Tensor Core WMMA Kernel" from the dropdown → Click MIGRATE]**
 
-**[Click MIGRATE]**
+> *"NOW let's do the hardest possible migration. This is an NVIDIA Tensor Core GEMM kernel using WMMA intrinsics. Standard hipify COMPLETELY fails on this."*
 
-> *"Look at what happens:*
+**[Point to the banner]**
+
+> *"Look. Migration Score drops to ZERO. AMD Readiness: 0%. The Risk Heatmap is fully red."*
+
+**[Click "Agent Trace" tab]**
+
+> *"The Hardware-Aware Scanner caught wmma::mma_sync and flagged it for AMD Matrix Core MFMA intrinsic lowering.*
 >
-> *Migration Score drops to ZERO. Migration Health: 0%. 14 critical lines.*
+> *The Exploration Scanner found hardcoded warp size 32 — every instance will produce WRONG results on AMD's 64-wide wavefronts.*
 >
-> *The Hardware-Aware Scanner caught wmma::mma_sync and flagged it for AMD Matrix Core MFMA intrinsic lowering.*
->
-> *The Exploration Scanner found 7 instances of hardcoded warp size 32 — every single one will produce WRONG results on AMD's 64-wide wavefronts.*
->
-> *The Build Error Copilot is already telling you: add rocwmma.hpp, replace __syncwarp, link with -lrocblas.*
->
-> *No other migration tool does this. hipify won't catch it. ChatGPT won't catch it. We catch it because we understand the HARDWARE, not just the syntax."*
+> *The Build Error Copilot is already saying: add rocwmma.hpp, replace __syncwarp, link with -lrocblas."*
+
+**[Click "Validation Report" tab]**
+
+> *"And the Validation Report gives a complete checklist — what's safe, what needs manual review, and why this matters to AMD."*
+
+> *"No other migration tool does this. We catch it because we understand the HARDWARE, not just the syntax."*
 
 ---
 
 ## 🎬 SLIDE 3: Architecture (2:30 – 3:00)
 
-**[Show the Mermaid architecture diagram from README]**
+**[Show the Mermaid architecture diagram from README or a slide]**
 
-> *"Under the hood — 9 specialized agents coordinated by an orchestrator:*
+> *"Under the hood — 9 specialized agents. The key differentiators are the Hardware-Aware Scanner, the Verification Pass with rescue branches, and the Health Monitor that generates per-line saliency maps.*
 >
-> *The key differentiators are the Hardware-Aware Scanner, the Verification Pass with rescue branches, and the Health Monitor that tracks per-line saliency — which lines are safe, which will silently fail.*
->
-> *The whole system is backed by a custom LoRA fine-tuned CodeLlama model that we're training on AMD Instinct MI300X GPUs using ROCm 6.2 — eating our own dog food."*
+> *The system is backed by a custom LoRA fine-tuned CodeLlama model trained on AMD Instinct MI300X GPUs using ROCm 6.2."*
 
 ---
 
 ## 🎬 SLIDE 4: Close (3:00 – 3:30)
 
-> *"ROCm Forge reduces migration effort by 65%. It handles everything from Python scripts to Dockerfiles to the hardest Tensor Core kernels.*
+> *"ROCm Forge reduces CUDA-to-ROCm migration effort by an estimated 65%. It handles Python scripts, Dockerfiles, and the hardest Tensor Core kernels.*
 >
-> *We're not just translating syntax — we're doing hardware-aware, architecture-level code transformation. That's what makes this different.*
+> *We're not translating syntax. We're doing architecture-level, hardware-aware code transformation.*
+>
+> *ROCm Forge helps developers move from NVIDIA to AMD with confidence, speed, and transparency.*
 >
 > *Thank you. We're Team Cipher."*
 
-**[End on the ROCm Forge UI with the WMMA results still visible]**
+**[End on the ROCm Forge UI with the WMMA results visible]**
 
 ---
 
-## 📋 Presentation Tips
+## 📋 Recording Tips
 
-1. **Don't read the script** — memorize the flow, speak naturally
-2. **The WMMA demo is your KILLER MOMENT** — spend the most time here
-3. **Show the agent trace animating** — it looks impressive in the UI
-4. **Keep your webcam off** if possible — focus on the screen recording
-5. **Use Loom or OBS** — record screen + voiceover
-6. **Practice twice** — aim for 3:15 on the second run (buffer for pauses)
+| # | Tip |
+|---|-----|
+| 1 | **Don't read the script** — memorize the flow, speak naturally |
+| 2 | **The WMMA demo is your KILLER MOMENT** — spend the most time here |
+| 3 | **Show the Agent Trace tab animating** — it looks incredible |
+| 4 | **Use Loom or OBS** — screen capture + voiceover |
+| 5 | **Practice twice** — aim for 3:15 on second run (buffer for pauses) |
+| 6 | **Keep webcam off** — focus entirely on the screen |
 
 ## 🎯 What Judges Will Remember
 
 | Moment | Why It Sticks |
 |--------|--------------|
-| "Migration Score: 0" on WMMA | Shows your tool handles the HARD problems |
-| "14 critical lines" in saliency map | Proves you understand GPU architecture |
-| "Warp 32 → Wavefront 64" detection | Technical depth no other team will have |
+| "Migration Score: 0" on WMMA | Shows your tool handles the HARDEST problems |
+| "AMD Readiness: 0%" with red bar | Visual punch — judges SEE the danger |
+| "14 critical lines" in saliency | Proves you understand GPU architecture |
+| Agent Trace with 9 green steps | Shows this is a REAL multi-agent system |
 | "Trained on MI300X" | Shows you actually used AMD hardware |
+| Build Error Copilot suggestions | Pre-emptive — judges will be surprised |

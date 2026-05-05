@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ROCm Forge - System Protocol</title>
+    <meta name="description" content="ROCm Forge — AI Copilot for CUDA-to-AMD Migration. Reduces migration effort by 65% with safe, explainable transformations.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚒️</text></svg>">
+    <title>ROCm Forge — AI Copilot for CUDA-to-AMD Migration</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Vue.js -->
@@ -95,6 +97,41 @@
         /* Highlight.js override */
         .hljs { background: #0f1115 !important; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
 
+        /* Fade-in animation for results */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in > * {
+            animation: fadeInUp 0.5s ease-out both;
+        }
+        .animate-fade-in > *:nth-child(1) { animation-delay: 0s; }
+        .animate-fade-in > *:nth-child(2) { animation-delay: 0.1s; }
+        .animate-fade-in > *:nth-child(3) { animation-delay: 0.2s; }
+        .animate-fade-in > *:nth-child(4) { animation-delay: 0.3s; }
+
+        /* Toast notification */
+        .toast {
+            position: fixed; bottom: 2rem; right: 2rem; z-index: 999;
+            padding: 0.75rem 1.25rem; border-radius: 12px;
+            background: rgba(16, 185, 129, 0.9); color: white;
+            font-size: 0.875rem; font-weight: 600;
+            backdrop-filter: blur(8px);
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        /* Loading spinner */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            50% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0.5; }
+        }
+        .pulse-dot {
+            animation: pulse-ring 1.5s ease-in-out infinite;
+        }
+
         /* Metric Cards */
         .metric-card {
             background: linear-gradient(145deg, rgba(30,34,43,0.9) 0%, rgba(20,22,28,0.9) 100%);
@@ -129,9 +166,9 @@
                     <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white mb-1">
                         ROCm <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-brand">Forge</span>
                     </h1>
-                    <span class="font-mono text-xs text-blue-400 uppercase tracking-widest flex items-center gap-2">
-                        <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> Multi-Agent Migration Engine
-                    </span>
+                        <span class="font-mono text-xs text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> 9-Agent Migration Engine · Team Cipher
+                        </span>
                 </div>
             </div>
             
@@ -187,7 +224,24 @@
             <!-- Right Area (Results) -->
             <div class="w-full flex-1 flex flex-col gap-6 min-w-0">
                 
-                <div v-if="!result" class="glass-panel flex flex-col items-center justify-center h-full min-h-[600px] text-center relative overflow-hidden">
+                <!-- Loading State -->
+                <div v-if="isMigrating" class="glass-panel flex flex-col items-center justify-center h-full min-h-[600px] text-center relative overflow-hidden">
+                    <div class="w-24 h-24 mb-6 relative">
+                        <div class="absolute inset-0 border-2 border-brand/60 rounded-full animate-[spin_1.5s_linear_infinite]"></div>
+                        <div class="absolute inset-2 border-2 border-t-transparent border-blue-500/50 rounded-full animate-[spin_1s_linear_infinite_reverse]"></div>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <i class="fas fa-cogs text-3xl text-brand pulse-dot"></i>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-2">Forging ROCm Code...</h3>
+                    <p class="text-gray-400 text-sm max-w-sm mb-4">9-agent pipeline is analyzing and transforming your code.</p>
+                    <div class="flex flex-col gap-1 font-mono text-xs text-gray-500">
+                        <span class="animate-pulse">🔍 Analyzer Agent scanning...</span>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div v-else-if="!result" class="glass-panel flex flex-col items-center justify-center h-full min-h-[600px] text-center relative overflow-hidden">
                     <div class="w-24 h-24 mb-6 relative">
                         <div class="absolute inset-0 border-2 border-dashed border-gray-600 rounded-full animate-[spin_10s_linear_infinite]"></div>
                         <div class="absolute inset-2 border-2 border-dashed border-brand/50 rounded-full animate-[spin_7s_linear_infinite_reverse]"></div>
@@ -196,21 +250,30 @@
                         </div>
                     </div>
                     <h3 class="text-xl font-bold text-white mb-2">Awaiting Source Code</h3>
-                    <p class="text-gray-400 text-sm max-w-sm">Provide NVIDIA CUDA code on the left and our multi-agent system will forge the AMD ROCm equivalent.</p>
+                    <p class="text-gray-400 text-sm max-w-sm">Provide NVIDIA CUDA code on the left and our 9-agent system will forge the AMD ROCm equivalent.</p>
                 </div>
 
                 <div v-else class="flex flex-col gap-6 animate-fade-in h-full">
                     
                     <!-- Vibrant Status Banner -->
-                    <div class="glass-panel px-6 py-5 flex items-center justify-between border-l-4 border-l-brand relative overflow-hidden">
+                    <div class="glass-panel px-6 py-5 flex flex-col md:flex-row items-start md:items-center justify-between border-l-4 border-l-brand relative overflow-hidden gap-4">
                         <div class="absolute inset-0 bg-gradient-to-r from-brand/10 to-transparent pointer-events-none"></div>
                         <div class="flex items-center gap-5 relative z-10">
-                            <div class="w-10 h-10 rounded-full bg-brand/20 flex items-center justify-center border border-brand/30">
+                            <div class="w-10 h-10 rounded-full bg-brand/20 flex items-center justify-center border border-brand/30 shrink-0">
                                 <i class="fas fa-check text-brand"></i>
                             </div>
                             <div>
-                                <h2 class="text-lg font-bold text-white mb-0.5">Migration Successful</h2>
-                                <p class="text-sm text-gray-400">Estimated manual effort reduced by <span class="text-brand font-bold">65%</span></p>
+                                <h2 class="text-lg font-bold text-white mb-0.5">Migration Complete</h2>
+                                <p class="text-sm text-gray-400">Estimated manual effort reduced by <span class="text-brand font-bold">~65%</span> · 
+                                    <span class="text-blue-400">{{ result.agent_steps.length }} agents</span> · 
+                                    <span class="text-green-400">{{ result.total_duration_ms }}ms</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="relative z-10 flex items-center gap-3">
+                            <div class="text-center">
+                                <div class="text-xs text-gray-500 uppercase tracking-wider">Migration Score</div>
+                                <div class="text-2xl font-bold" :class="result.analysis.migration_score > 70 ? 'text-green-400' : (result.analysis.migration_score > 30 ? 'text-yellow-400' : 'text-red-500')">{{ result.analysis.migration_score }}<span class="text-sm text-gray-500">/100</span></div>
                             </div>
                         </div>
                     </div>
@@ -474,6 +537,14 @@
                 </div>
             </div>
         </main>
+
+        <!-- Footer -->
+        <footer class="max-w-7xl mx-auto w-full mt-12 pt-6 border-t border-white/5 text-center">
+            <p class="text-xs text-gray-500">Built by <span class="text-brand font-semibold">Team Cipher</span> for the AMD Developer Hackathon · Powered by ROCm 6.2</p>
+        </footer>
+
+        <!-- Toast -->
+        <div id="toast" class="toast"><i class="fas fa-check-circle mr-2"></i>Copied to clipboard</div>
     </div>
 
     <script>
@@ -521,10 +592,29 @@
                         const res = await fetch(apiUrl);
                         if (res.ok) {
                             this.samples = await res.json();
+                        } else {
+                            this.loadFallbackSamples();
                         }
                     } catch (e) {
-                        console.error('Failed to load samples', e);
+                        console.error('Failed to load samples, using fallback', e);
+                        this.loadFallbackSamples();
                     }
+                },
+                loadFallbackSamples() {
+                    this.samples = {
+                        pytorch: {
+                            title: '🚀 PyTorch ResNet Training',
+                            code: 'import torch\nimport torch.nn as nn\nimport os\n\nos.environ["CUDA_VISIBLE_DEVICES"] = "0,1"\n\ndef train_model():\n    device = torch.device("cuda:0")\n    torch.backends.cudnn.benchmark = True\n    model = nn.Linear(512, 10).cuda()\n    print(f"CUDA version: {torch.version.cuda}")'
+                        },
+                        vllm: {
+                            title: '🤖 LLM Inference with vLLM',
+                            code: 'from vllm import LLM, SamplingParams\nimport os\n\nos.environ["CUDA_HOME"] = "/usr/local/cuda-12.1"\n\nllm = LLM(model="meta-llama/Llama-2-7b-chat-hf", tensor_parallel_size=2)\noutputs = llm.generate(["Hello"], SamplingParams(temperature=0.8))'
+                        },
+                        kernel: {
+                            title: '⚡ Custom CUDA Kernel (C++)',
+                            code: '#include <cuda_runtime.h>\n\n__global__ void add(float* a, float* b, float* c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (i < n) c[i] = a[i] + b[i];\n}\n\nint main() {\n    float *a, *b, *c;\n    cudaMalloc(&a, 1024);\n    cudaMalloc(&b, 1024);\n    cudaMalloc(&c, 1024);\n    add<<<4, 256>>>(a, b, c, 1024);\n    cudaDeviceSynchronize();\n    cudaFree(a);\n    return 0;\n}'
+                        }
+                    };
                 },
                 loadSample() {
                     if (this.selectedSample && this.samples[this.selectedSample]) {
@@ -573,7 +663,9 @@
                 async copyToClipboard(text) {
                     try {
                         await navigator.clipboard.writeText(text);
-                        alert('Copied to clipboard!');
+                        const toast = document.getElementById('toast');
+                        toast.classList.add('show');
+                        setTimeout(() => toast.classList.remove('show'), 2000);
                     } catch (err) {
                         console.error('Failed to copy: ', err);
                     }
