@@ -510,4 +510,130 @@ EXPOSE 8000
 CMD ["python3", "server.py"]
 ''',
     },
+
+    # =================================================================
+    # Sample 6: WMMA Tensor Core Kernel (HARDEST MIGRATION)
+    # This is the "tough engineering" sample — demonstrates ROCm Forge
+    # handling intrinsic-level hardware translation that standard
+    # hipify tools completely fail on.
+    # =================================================================
+    "tensor_core_wmma": {
+        "title": "🔬 Tensor Core WMMA Kernel (Advanced)",
+        "description": "NVIDIA Tensor Core matrix multiply using WMMA intrinsics. This is the HARDEST migration case — requires intrinsic lowering from NVIDIA mma.sync to AMD Matrix Core (MFMA).",
+        "code": '''/**
+ * NVIDIA Tensor Core Matrix Multiply using WMMA API
+ * This kernel uses warp-level matrix operations that are
+ * fundamentally tied to NVIDIA hardware architecture.
+ * 
+ * Migration difficulty: ADVANCED
+ * - WMMA intrinsics have no direct hipify mapping
+ * - Warp size 32 is hardcoded throughout
+ * - Tensor Core tile sizes are NVIDIA-specific
+ */
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <mma.h>  // NVIDIA WMMA header
+
+using namespace nvcuda;
+
+// WMMA tile dimensions (NVIDIA Tensor Core specific)
+const int WMMA_M = 16;
+const int WMMA_N = 16;
+const int WMMA_K = 16;
+
+// Matrix dimensions
+const int M = 4096;
+const int N = 4096;
+const int K = 4096;
+
+__global__ void wmma_gemm_kernel(
+    const half* __restrict__ A,
+    const half* __restrict__ B,
+    float* __restrict__ C,
+    int M, int N, int K
+) {
+    // Warp-level indices (NVIDIA warp = 32 threads)
+    int warpM = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
+    int warpN = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // Declare WMMA fragments (NVIDIA Tensor Core data structures)
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag;
+
+    // Initialize accumulator to zero
+    wmma::fill_fragment(acc_frag, 0.0f);
+
+    // Accumulate over K dimension
+    for (int k = 0; k < K; k += WMMA_K) {
+        int aRow = warpM * WMMA_M;
+        int aCol = k;
+        int bRow = k;
+        int bCol = warpN * WMMA_N;
+
+        if (aRow < M && aCol < K && bRow < K && bCol < N) {
+            // Load matrix tiles into WMMA fragments
+            wmma::load_matrix_sync(a_frag, A + aRow * K + aCol, K);
+            wmma::load_matrix_sync(b_frag, B + bRow * N + bCol, N);
+
+            // Tensor Core matrix multiply-accumulate
+            wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
+        }
+    }
+
+    // Store result
+    int cRow = warpM * WMMA_M;
+    int cCol = warpN * WMMA_N;
+    if (cRow < M && cCol < N) {
+        wmma::store_matrix_sync(C + cRow * N + cCol, acc_frag, N, wmma::mem_row_major);
+    }
+}
+
+int main() {
+    // Allocate device memory
+    half *d_A, *d_B;
+    float *d_C;
+    cudaMalloc(&d_A, M * K * sizeof(half));
+    cudaMalloc(&d_B, K * N * sizeof(half));
+    cudaMalloc(&d_C, M * N * sizeof(float));
+
+    // Launch configuration (32 threads per warp)
+    dim3 threads(32, 4);
+    dim3 blocks((M + 32 - 1) / 32, (N + WMMA_N - 1) / WMMA_N);
+
+    // Create CUDA events for timing
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
+    wmma_gemm_kernel<<<blocks, threads>>>(d_A, d_B, d_C, M, N, K);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+
+    // Check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error: %s\\n", cudaGetErrorString(err));
+        return 1;
+    }
+
+    // Calculate TFLOPS
+    double tflops = (2.0 * M * N * K) / (milliseconds * 1e9);
+    printf("WMMA GEMM: %.2f ms, %.2f TFLOPS\\n", milliseconds, tflops);
+
+    // Cleanup
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    return 0;
+}
+''',
+    },
 }

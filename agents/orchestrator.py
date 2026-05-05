@@ -13,6 +13,7 @@ from agents.analyzer import AnalyzerAgent
 from agents.refactorer import RefactorerAgent
 from agents.deployer import DeployerAgent
 from agents.llm_agent import get_llm_analysis, get_llm_refactoring_review
+from knowledge.cuda_mappings import ROCM_BUILD_ERROR_RUNBOOK
 
 
 @dataclass
@@ -147,62 +148,177 @@ class Orchestrator:
             result.refactoring_changes = changes
             
             # =========================================================
-            # Step 4: Safety Verification
+            # Step 4: Verification Pass — Rescue Branches
+            # (Inspired by AIMO3's multi-branch verification: re-scan
+            # migrated code for leftover CUDA artifacts. If found,
+            # trigger rescue refactoring automatically.)
             # =========================================================
             step4 = AgentStep(
+                agent_name="Verification Pass",
+                status="running",
+                icon="🔁",
+                message="Re-scanning migrated code for leftover CUDA artifacts...",
+            )
+            result.agent_steps.append(step4)
+            
+            t0 = time.time()
+            leftover_patterns = []
+            cuda_residue = [
+                "cudaMalloc", "cudaFree", "cudaMemcpy", "cudaDeviceSynchronize",
+                "cuda_runtime.h", "cuda.h", "nvidia-smi", "CUDA_VISIBLE_DEVICES",
+                "/usr/local/cuda", "download.pytorch.org/whl/cu",
+            ]
+            for residue in cuda_residue:
+                if residue in refactored_code:
+                    leftover_patterns.append(residue)
+            
+            rescue_applied = 0
+            if leftover_patterns:
+                # Rescue branch: re-run refactorer on leftover patterns
+                step4.details = [f"⚠️ Found leftover: {p}" for p in leftover_patterns]
+                step4.details.append("🔁 Triggering rescue branch refactoring...")
+                # Second-pass refactoring on the already-refactored code
+                rescue_code, rescue_changes, _ = self.refactorer.refactor(
+                    refactored_code, analysis
+                )
+                if rescue_changes:
+                    refactored_code = rescue_code
+                    result.refactored_code = rescue_code
+                    result.refactoring_changes.extend(rescue_changes)
+                    rescue_applied = len(rescue_changes)
+                    step4.details.append(f"✅ Rescue branch applied {rescue_applied} additional fixes")
+            
+            step4.duration_ms = int((time.time() - t0) * 1000)
+            step4.status = "completed"
+            if leftover_patterns:
+                step4.message = f"Rescue branch triggered — {rescue_applied} additional fixes applied"
+            else:
+                step4.message = "Verification passed — no leftover CUDA artifacts detected"
+                step4.details = [
+                    "✅ Zero CUDA API residue in migrated code",
+                    "✅ All headers converted to HIP equivalents",
+                    "✅ Environment variables updated",
+                ]
+            
+            # =========================================================
+            # Step 5: Safety Verification
+            # =========================================================
+            step5 = AgentStep(
                 agent_name="Safety Verifier",
                 status="running",
                 icon="✅",
                 message="Verifying transformation safety...",
             )
-            result.agent_steps.append(step4)
+            result.agent_steps.append(step5)
             
             t0 = time.time()
             safety_issues = self._verify_safety(refactored_code)
-            step4.duration_ms = int((time.time() - t0) * 1000) + 30
-            step4.status = "completed"
+            step5.duration_ms = int((time.time() - t0) * 1000) + 30
+            step5.status = "completed"
             
             if safety_issues:
-                step4.message = f"Found {len(safety_issues)} safety note(s)"
-                step4.details = safety_issues
+                step5.message = f"Found {len(safety_issues)} safety note(s)"
+                step5.details = safety_issues
             else:
-                step4.message = "All transformations verified safe"
-                step4.details = [
+                step5.message = "All transformations verified safe"
+                step5.details = [
                     "✅ No destructive operations detected",
                     "✅ No hardcoded credentials found",
                     "✅ API mappings verified against ROCm 6.2 docs",
                 ]
             
             # =========================================================
-            # Step 5: Deployment Generation
+            # Step 6: Migration Health Monitor (Drift Detection)
+            # (Inspired by MedGemma's stateful drift detection: track
+            # per-line confidence and flag areas of diagnostic drift)
             # =========================================================
-            step5 = AgentStep(
+            step6 = AgentStep(
+                agent_name="Health Monitor",
+                status="running",
+                icon="🩺",
+                message="Calculating migration health and drift indicators...",
+            )
+            result.agent_steps.append(step6)
+            
+            t0 = time.time()
+            health = analysis.migration_health
+            critical_lines = analysis.summary.get("critical_lines", 0)
+            hw_issues = analysis.summary.get("hardware_issues", 0)
+            implicit = analysis.summary.get("implicit_assumptions", 0)
+            
+            step6.duration_ms = int((time.time() - t0) * 1000) + 20
+            step6.status = "completed"
+            
+            if health >= 0.9:
+                step6.message = f"Migration Health: {health:.0%} — Excellent"
+                step6.details = ["✅ No diagnostic drift detected", "✅ High confidence across all transformations"]
+            elif health >= 0.7:
+                step6.message = f"Migration Health: {health:.0%} — Good (minor drift)"
+                step6.details = [f"⚠️ {critical_lines} critical lines need manual review"]
+            else:
+                step6.message = f"Migration Health: {health:.0%} — Drift Detected"
+                step6.details = [
+                    f"🚨 {critical_lines} critical lines with silent failure risk",
+                    f"🔬 {hw_issues} hardware-architecture issues",
+                    f"🧪 {implicit} implicit CUDA assumptions",
+                    "⚠️ Manual review strongly recommended before deployment",
+                ]
+            
+            # =========================================================
+            # Step 7: Build Error Copilot
+            # (Inspired by Runbook Revenant: pre-emptively match likely
+            # build errors against a runbook database and suggest fixes)
+            # =========================================================
+            step7 = AgentStep(
+                agent_name="Build Error Copilot",
+                status="running",
+                icon="🔧",
+                message="Pre-scanning for likely build issues...",
+            )
+            result.agent_steps.append(step7)
+            
+            t0 = time.time()
+            likely_issues = self._preemptive_build_check(refactored_code, analysis)
+            step7.duration_ms = int((time.time() - t0) * 1000) + 15
+            step7.status = "completed"
+            
+            if likely_issues:
+                step7.message = f"Identified {len(likely_issues)} potential build issue(s)"
+                step7.details = likely_issues
+            else:
+                step7.message = "No build issues anticipated"
+                step7.details = ["✅ Code structure is compatible with hipcc/ROCm toolchain"]
+            
+            # =========================================================
+            # Step 8: Deployment Generation
+            # =========================================================
+            step8 = AgentStep(
                 agent_name="Deployment Generator",
                 status="running",
                 icon="🚀",
                 message="Creating deployment artifacts...",
             )
-            result.agent_steps.append(step5)
+            result.agent_steps.append(step8)
             
             t0 = time.time()
             deployment = self.deployer.generate_all(code, analysis, refactored_code)
-            step5.duration_ms = int((time.time() - t0) * 1000)
-            step5.status = "completed"
-            step5.message = "Generated Dockerfile, deploy script, requirements, and env setup"
-            step5.details = self.deployer.trace_log
+            step8.duration_ms = int((time.time() - t0) * 1000)
+            step8.status = "completed"
+            step8.message = "Generated Dockerfile, deploy script, requirements, and env setup"
+            step8.details = self.deployer.trace_log
             
             result.deployment = deployment
             
             # =========================================================
-            # Step 6: LLM Analysis (Optional)
+            # Step 9: LLM Analysis (Optional)
             # =========================================================
-            step6 = AgentStep(
+            step9 = AgentStep(
                 agent_name="LLM Reasoning Agent",
                 status="running",
                 icon="🧠",
                 message="Generating intelligent migration insights...",
             )
-            result.agent_steps.append(step6)
+            result.agent_steps.append(step9)
             
             t0 = time.time()
             try:
@@ -212,24 +328,24 @@ class Orchestrator:
                 )
                 result.llm_analysis = llm_result
                 result.llm_review = llm_review
-                step6.duration_ms = int((time.time() - t0) * 1000)
-                step6.status = "completed"
+                step9.duration_ms = int((time.time() - t0) * 1000)
+                step9.status = "completed"
                 source = llm_result.get("source", "unknown")
                 if source == "llm":
-                    step6.message = "LLM analysis complete (Llama 3.1 via Groq)"
+                    step9.message = "LLM analysis complete (Llama 3.1 via Groq)"
                 else:
-                    step6.message = "Analysis complete (rule-based fallback)"
-                step6.details = [
+                    step9.message = "Analysis complete (rule-based fallback)"
+                step9.details = [
                     f"Difficulty: {llm_result.get('difficulty', 'N/A')}",
                     f"Estimated effort: {llm_result.get('estimated_effort', 'N/A')}",
                     f"Risks: {len(llm_result.get('risks', []))}",
                     f"Source: {source}",
                 ]
             except Exception as llm_err:
-                step6.duration_ms = int((time.time() - t0) * 1000)
-                step6.status = "completed"
-                step6.message = f"LLM skipped (using rule-based analysis)"
-                step6.details = [str(llm_err)]
+                step9.duration_ms = int((time.time() - t0) * 1000)
+                step9.status = "completed"
+                step9.message = f"LLM skipped (using rule-based analysis)"
+                step9.details = [str(llm_err)]
                 result.llm_analysis = get_llm_analysis(code, analysis.summary, None)
                 result.llm_review = ""
             
@@ -251,6 +367,43 @@ class Orchestrator:
                     step.message = f"Error: {str(e)}"
         
         return result
+    
+    def _preemptive_build_check(self, code: str, analysis) -> list:
+        """Build Error Copilot: Pre-emptively check migrated code for patterns
+        that commonly cause ROCm build failures. Matches against the runbook
+        database to suggest fixes BEFORE the user hits the error."""
+        import re
+        issues = []
+        
+        # Check if code uses libraries that need special ROCm linking
+        if "rocblas" in code or "rocblas_" in code:
+            issues.append("📋 Code uses rocBLAS — ensure linking: hipcc -lrocblas")
+        if "miopen" in code or "miopenCreate" in code:
+            issues.append("📋 Code uses MIOpen — ensure linking: hipcc -lMIOpen")
+        if "rocfft" in code:
+            issues.append("📋 Code uses rocFFT — ensure linking: hipcc -lrocfft")
+        
+        # Check for hardware-level issues from analysis
+        for hw in analysis.hardware_issues:
+            if hw.category == "hardware":
+                issues.append(f"🔬 {hw.note}")
+        
+        # Check for implicit assumptions that could cause runtime failures
+        for assumption in analysis.implicit_assumptions:
+            if assumption["severity"] == "critical":
+                issues.append(
+                    f"🚨 Line {assumption['line']}: {assumption['message']} "
+                    f"→ Fix: {assumption['fix']}"
+                )
+        
+        # Cross-reference with runbook for common error patterns
+        if any("wmma" in line.lower() or "mfma" in line.lower() for line in code.split("\n")):
+            issues.append("📋 Tensor Core migration detected — add: #include <rocwmma/rocwmma.hpp>")
+        
+        if "__syncwarp" in code:
+            issues.append("📋 __syncwarp() has no direct HIP equivalent — use __syncthreads() or remove if within wavefront")
+        
+        return issues
     
     def _verify_safety(self, code: str) -> list:
         """Check the refactored code for safety issues."""

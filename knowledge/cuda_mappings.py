@@ -332,6 +332,28 @@ KERNEL_SYNTAX_MAPPINGS = {
 
 
 # =============================================================================
+# Hardware-Aware Mappings (Tough Engineering)
+# =============================================================================
+HARDWARE_AWARE_MAPPINGS = {
+    # Warp vs Wavefront rewriting
+    "32": {
+        "context": ["__syncwarp", "warp_size", "warpSize"],
+        "replacement": "__AMDGCN_WAVEFRONT_SIZE",
+        "note": "Hardware-Aware Refactoring: Hardcoded Warp Size (32) replaced with dynamic AMD Wavefront Size (64)."
+    },
+    # NVIDIA Tensor Core -> AMD Matrix Core
+    "wmma::mma_sync": {
+        "replacement": "__builtin_amdgcn_mfma_f32_32x32x1f32",
+        "note": "Intrinsic Lowering: Translated NVIDIA Tensor Core mma.sync to AMD Matrix Core (MFMA) intrinsic."
+    },
+    "nvcuda::wmma": {
+        "replacement": "rocwmma",
+        "note": "Library Abstraction: Replaced nvcuda::wmma namespace with rocwmma."
+    }
+}
+
+
+# =============================================================================
 # Known Incompatibilities & Warnings
 # =============================================================================
 KNOWN_ISSUES = {
@@ -394,4 +416,157 @@ DOCKER_IMAGE_MAPPINGS = {
     "nvidia/cuda:12.1.0-runtime-ubuntu22.04": "rocm/dev-ubuntu-22.04:6.2",
     "pytorch/pytorch:2.1.0-cuda11.8-cudnn8-devel": "rocm/pytorch:rocm6.2_ubuntu22.04_py3.10_pytorch_release_2.3.0",
     "pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel": "rocm/pytorch:rocm6.2_ubuntu22.04_py3.10_pytorch_release_2.3.0",
+}
+
+
+# =============================================================================
+# Implicit CUDA Assumptions — Curiosity-Driven Exploration Scan
+# (Inspired by curiosity-driven RL: detect patterns that AREN'T explicitly
+# CUDA API calls but silently assume NVIDIA hardware behavior)
+# =============================================================================
+IMPLICIT_CUDA_PATTERNS = {
+    "hardcoded_warp_32": {
+        "regex": r"\b32\b",
+        "context_required": ["thread", "warp", "lane", "mask", "shuffle", "ballot", "shfl", "__syncwarp", "blockDim"],
+        "severity": "critical",
+        "message": "Hardcoded value 32 in thread/warp context. AMD wavefronts are 64-wide — this WILL produce silent wrong results.",
+        "fix": "Replace with warpSize or __builtin_amdgcn_wavefrontsize() for portability.",
+    },
+    "hardcoded_sm_count": {
+        "regex": r"(?:num_sm|sm_count|multiprocessor|SM_COUNT)\s*=\s*\d+",
+        "context_required": [],
+        "severity": "warning",
+        "message": "Hardcoded Streaming Multiprocessor count. AMD uses Compute Units (CUs) with different counts per GPU.",
+        "fix": "Query device properties at runtime: hipDeviceGetAttribute(&val, hipDeviceAttributeMultiprocessorCount, dev).",
+    },
+    "shared_mem_bank_32": {
+        "regex": r"(?:bank|BANK).*\b32\b|__shfl(?:_sync)?",
+        "context_required": [],
+        "severity": "warning",
+        "message": "Shared memory bank conflict assumptions. AMD GCN/RDNA shared memory has 32 banks (same) but different conflict resolution.",
+        "fix": "Test for bank conflicts using rocprof. AMD LDS has different padding requirements.",
+    },
+    "l2_cache_residency": {
+        "regex": r"cudaAccessPolicyWindow|cudaStreamAttrValue|accessPolicyWindow|l2_cache|L2_CACHE",
+        "context_required": [],
+        "severity": "warning",
+        "message": "CUDA L2 cache residency controls have no direct AMD equivalent.",
+        "fix": "AMD uses different L2 cache hierarchy. Remove L2 residency hints; use rocprof to tune.",
+    },
+    "ptx_inline_asm": {
+        "regex": r"asm\s*\(\s*\".*(?:mov|ld|st|add|mul|setp|bar|shfl|atom).*\"",
+        "context_required": [],
+        "severity": "critical",
+        "message": "Inline PTX assembly detected. PTX is NVIDIA-specific ISA — completely incompatible with AMD.",
+        "fix": "Replace with HIP C++ intrinsics or AMD GCN inline assembly (__builtin_amdgcn_*).",
+    },
+    "cuda_graph_capture": {
+        "regex": r"cudaStreamBeginCapture|cudaGraphLaunch|cuda\.CUDAGraph|with\s+torch\.cuda\.graph",
+        "context_required": [],
+        "severity": "warning",
+        "message": "CUDA Graphs have limited and experimental support on ROCm. May cause hangs or errors.",
+        "fix": "Use enforce_eager=True in vLLM. For custom code, test hipGraphLaunch carefully or remove graph capture.",
+    },
+    "tensor_core_mma": {
+        "regex": r"mma\.sync|wmma::|nvcuda::wmma|__hmma|mma_sync",
+        "context_required": [],
+        "severity": "critical",
+        "message": "NVIDIA Tensor Core (WMMA/MMA) intrinsics detected. These require complete rewrite for AMD Matrix Cores (MFMA).",
+        "fix": "Use rocWMMA library or replace with __builtin_amdgcn_mfma_* intrinsics.",
+    },
+    "occupancy_calculator": {
+        "regex": r"cudaOccupancyMaxPotentialBlockSize|cudaOccupancyMaxActiveBlocksPerMultiprocessor",
+        "context_required": [],
+        "severity": "warning",
+        "message": "CUDA occupancy API. AMD has different occupancy characteristics due to 64-wide wavefronts and different register files.",
+        "fix": "Use hipOccupancyMaxPotentialBlockSize. Note: optimal block sizes differ on AMD (prefer multiples of 64).",
+    },
+}
+
+
+# =============================================================================
+# ROCm Build Error Runbook — Incident Copilot Database
+# (Inspired by incident-response copilots: maps common build/runtime errors
+# to root causes and automatic fixes)
+# =============================================================================
+ROCM_BUILD_ERROR_RUNBOOK = {
+    "hip_not_found": {
+        "error_pattern": r"hip/hip_runtime\.h.*No such file|cannot find -lhip",
+        "root_cause": "ROCm SDK not installed or not in PATH",
+        "fix_steps": [
+            "Install ROCm: sudo apt install rocm-dev",
+            "Set environment: export ROCM_HOME=/opt/rocm",
+            "Add to PATH: export PATH=$ROCM_HOME/bin:$PATH",
+        ],
+        "severity": "critical",
+    },
+    "hipcc_not_found": {
+        "error_pattern": r"hipcc.*not found|hipcc.*No such file",
+        "root_cause": "HIP compiler not installed or not in PATH",
+        "fix_steps": [
+            "Install HIP: sudo apt install hip-dev",
+            "Verify: which hipcc",
+            "Add to PATH: export PATH=/opt/rocm/bin:$PATH",
+        ],
+        "severity": "critical",
+    },
+    "unsupported_gpu_arch": {
+        "error_pattern": r"unsupported gpu architecture|Cannot determine AMD GPU",
+        "root_cause": "GPU architecture not specified or not supported by this ROCm version",
+        "fix_steps": [
+            "Check GPU: rocminfo | grep 'Name:'",
+            "Set target: export HIP_VISIBLE_DEVICES=0",
+            "Compile with arch: hipcc --offload-arch=gfx942 (MI300X) or gfx90a (MI250)",
+        ],
+        "severity": "critical",
+    },
+    "rocblas_not_found": {
+        "error_pattern": r"cannot find -lrocblas|rocblas\.h.*No such file",
+        "root_cause": "rocBLAS library not installed",
+        "fix_steps": [
+            "Install: sudo apt install rocblas-dev",
+            "Link path: export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH",
+        ],
+        "severity": "error",
+    },
+    "miopen_error": {
+        "error_pattern": r"miopenStatus.*Error|MIOpen.*failed|miopen.*not found",
+        "root_cause": "MIOpen (cuDNN equivalent) configuration issue",
+        "fix_steps": [
+            "Install: sudo apt install miopen-hip-dev",
+            "Set tuning: export MIOPEN_FIND_MODE=3",
+            "Clear cache: rm -rf ~/.config/miopen/",
+        ],
+        "severity": "error",
+    },
+    "hip_out_of_memory": {
+        "error_pattern": r"hipErrorOutOfMemory|HIP out of memory|RuntimeError.*out of memory",
+        "root_cause": "GPU memory exhausted — may need different allocation strategy for AMD",
+        "fix_steps": [
+            "Set: export PYTORCH_HIP_ALLOC_CONF=expandable_segments:True",
+            "Reduce batch size or model precision",
+            "Monitor: rocm-smi --showmeminfo vram",
+        ],
+        "severity": "error",
+    },
+    "warp_size_mismatch": {
+        "error_pattern": r"warpSize.*32|lane.*out of range|invalid shuffle",
+        "root_cause": "Code assumes NVIDIA warp size (32) but AMD wavefronts are 64-wide",
+        "fix_steps": [
+            "Replace hardcoded 32 with warpSize or __builtin_amdgcn_wavefrontsize()",
+            "Update __shfl_sync masks to cover 64 lanes",
+            "Check all bitwise operations on lane masks",
+        ],
+        "severity": "critical",
+    },
+    "rccl_timeout": {
+        "error_pattern": r"RCCL.*timeout|NCCL.*timeout.*RCCL|collective.*timeout",
+        "root_cause": "Multi-GPU communication timeout — RCCL (NCCL equivalent) needs tuning",
+        "fix_steps": [
+            "Set: export NCCL_SOCKET_IFNAME=eth0",
+            "Increase timeout: export RCCL_TIMEOUT=600",
+            "Check GPU topology: rocm-smi --showtoponuma",
+        ],
+        "severity": "error",
+    },
 }

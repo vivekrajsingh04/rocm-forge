@@ -56,9 +56,22 @@ async def migrate_code(request: MigrationRequest):
             "analysis": {
                 "code_type": result.analysis.code_type,
                 "migration_score": result.analysis.migration_score,
+                "migration_health": result.analysis.migration_health,
                 "migration_level": result.analysis.migration_level,
                 "summary": result.analysis.summary,
                 "known_issues": result.analysis.known_issues,
+                "hardware_issues": [
+                    {
+                        "pattern": p.pattern,
+                        "rocm_equivalent": p.rocm_equivalent,
+                        "category": p.category,
+                        "severity": p.severity,
+                        "line_number": p.line_number,
+                        "note": p.note,
+                    } for p in result.analysis.hardware_issues
+                ],
+                "implicit_assumptions": result.analysis.implicit_assumptions,
+                "saliency_map": result.analysis.saliency_map,
                 "detected_patterns": [
                     {
                         "pattern": p.pattern,

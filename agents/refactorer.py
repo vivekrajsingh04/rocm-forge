@@ -12,6 +12,7 @@ from knowledge.cuda_mappings import (
     HEADER_MAPPINGS,
     DOCKER_IMAGE_MAPPINGS,
     CLI_TOOL_MAPPINGS,
+    HARDWARE_AWARE_MAPPINGS,
 )
 
 
@@ -239,8 +240,47 @@ class RefactorerAgent:
             
             result_lines.append(modified)
         
+        # === Hardware-Aware Refactoring Pass ===
+        # Second pass: detect and rewrite Tensor Core / Warp-level patterns
+        final_lines = []
+        all_code = "\n".join(result_lines)
+        for i, line in enumerate(result_lines):
+            modified = line
+            # WMMA/Tensor Core → rocWMMA/MFMA
+            for hw_key, hw_info in HARDWARE_AWARE_MAPPINGS.items():
+                if hw_key == "32":
+                    # Context-dependent: only replace '32' when near warp operations
+                    contexts = hw_info.get("context", [])
+                    window = "\n".join(result_lines[max(0, i-2):min(len(result_lines), i+3)])
+                    if any(ctx in window for ctx in contexts):
+                        # Replace hardcoded 32 with wavefront-safe value
+                        if re.search(r'\b32\b', modified):
+                            original = modified
+                            modified = re.sub(r'\b32\b', hw_info["replacement"], modified, count=1)
+                            if modified != original:
+                                self.changes.append({
+                                    "line": i + 1,
+                                    "original": original.strip(),
+                                    "modified": modified.strip(),
+                                    "note": hw_info["note"],
+                                    "confidence": "⚠️ Review",
+                                })
+                else:
+                    if hw_key in modified:
+                        original = modified
+                        modified = modified.replace(hw_key, hw_info["replacement"])
+                        self.changes.append({
+                            "line": i + 1,
+                            "original": original.strip(),
+                            "modified": modified.strip(),
+                            "note": hw_info["note"],
+                            "confidence": "⚠️ Review",
+                        })
+            final_lines.append(modified)
+        
         self.trace_log.append(f"⚙️ C++/CUDA refactoring: {len(self.changes)} changes applied")
-        return "\n".join(result_lines)
+        self.trace_log.append(f"🔬 Hardware-aware pass: Tensor Core → MFMA, Warp → Wavefront checks applied")
+        return "\n".join(final_lines)
     
     def _refactor_dockerfile(self, code: str, analysis) -> str:
         """Refactor Dockerfile from NVIDIA to ROCm."""

@@ -33,15 +33,23 @@ graph TD
     classDef default fill:#1e1e24,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef highlight fill:#ed1c24,stroke:#fff,stroke-width:2px,color:#fff;
     classDef database fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#fff;
+    classDef critical fill:#dc2626,stroke:#fff,stroke-width:2px,color:#fff;
 
     A[CUDA Source Code] --> B(Analyzer Agent)
-    B --> C(Checker Agent)
+    B --> B2(Hardware-Aware Scanner)
+    B2 --> B3(Exploration Scanner)
+    B3 --> C(Checker Agent)
     C --> D(Refactorer Agent)
-    D --> E(Verifier Agent)
-    E --> F[ROCm Source Code]
+    D --> V(Verification Pass)
+    V -->|leftover found| D
+    V -->|clean| E(Safety Verifier)
+    E --> H2(Health Monitor)
+    H2 --> BC(Build Error Copilot)
+    BC --> F[ROCm Source Code]
 
     B -.-> G[(Knowledge Base)]
     C -.-> G
+    BC -.-> RB[(Error Runbook)]
 
     F --> H(Deployer Agent)
     H --> I[Dockerfile & Scripts]
@@ -51,17 +59,21 @@ graph TD
     end
 
     class F,I highlight;
-    class G database;
+    class G,RB database;
+    class B2,B3 critical;
 ```
 
-### 6-Agent Pipeline
+### 9-Agent Pipeline
 
 1. **Analyzer Agent** — Detects code type (Python/PyTorch, C++ Kernel, Dockerfile) and extracts CUDA APIs.
-2. **Checker Agent** — Maps NVIDIA APIs to `hip` / `MIOpen` equivalents using an internal knowledge base.
-3. **Refactorer Agent** — Deterministic AST transforms with **Confidence Scores** (`Safe`, `Review`, `Manual`).
-4. **Verifier Agent** — Audits transformed code for syntax errors and un-migrated artifacts.
-5. **Deployer Agent** — Generates `Dockerfile`, `deploy_rocm.sh`, and `requirements.txt` for AMD instances.
-6. **LLM Explainer Agent** — Two modes:
+2. **Hardware-Aware Scanner** — Detects architecture-level issues: warp → wavefront mismatches, Tensor Core → MFMA intrinsic lowering, PTX assembly.
+3. **Exploration Scanner** — Curiosity-driven scan for *implicit* CUDA assumptions (hardcoded `32`, SM counts, L2 cache hints) that regex alone misses.
+4. **Checker Agent** — Maps NVIDIA APIs to `hip` / `MIOpen` equivalents using an internal knowledge base.
+5. **Refactorer Agent** — Deterministic transforms with hardware-aware second pass. Confidence Scores (`Safe`, `Review`, `Manual`).
+6. **Verification Pass** — Re-scans migrated code for leftover CUDA artifacts. Triggers rescue branches if residue found.
+7. **Health Monitor** — Calculates per-line saliency map and migration health score. Detects "diagnostic drift" — areas likely to cause silent failures on AMD.
+8. **Build Error Copilot** — Pre-emptively matches code patterns against a runbook of common ROCm build failures and suggests fixes before you hit the error.
+9. **LLM Explainer Agent** — Two modes:
    - **Cloud Mode:** Groq API (Llama 3.1) for instant analysis.
    - **Enterprise Mode:** Custom LoRA fine-tuned CodeLlama, trained on AMD MI300X GPUs.
 
@@ -160,10 +172,11 @@ docker run -p 8000:8000 rocm-forge
 
 | Criteria | How ROCm Forge Delivers |
 |----------|------------------------|
-| **Technical Depth** | Deterministic AST parsing + LLM — avoids hallucination |
+| **Technical Depth** | Hardware-aware analysis (Warp→Wavefront, TensorCore→MFMA), not just string replacement |
 | **AMD GPU Usage** | Fine-tuned CodeLlama on MI300X via ROCm |
 | **Business Value** | Saves engineering hours; 65% effort reduction |
-| **Explainability** | Confidence labels (Safe/Review/Manual) on every change |
+| **Explainability** | Per-line saliency maps, migration health scores, confidence labels |
+| **Verification** | Multi-pass rescue branches + build error copilot with runbook database |
 | **Deployment** | Auto-generates Dockerfiles & scripts for AMD Cloud |
 
 ---

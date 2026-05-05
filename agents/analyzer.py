@@ -16,6 +16,8 @@ from knowledge.cuda_mappings import (
     KNOWN_ISSUES,
     CLI_TOOL_MAPPINGS,
     DOCKER_IMAGE_MAPPINGS,
+    HARDWARE_AWARE_MAPPINGS,
+    IMPLICIT_CUDA_PATTERNS,
 )
 
 
@@ -44,7 +46,11 @@ class AnalysisResult:
     cli_tools: List[CUDAPattern] = field(default_factory=list)
     pip_packages: List[CUDAPattern] = field(default_factory=list)
     known_issues: List[Dict] = field(default_factory=list)
+    hardware_issues: List[CUDAPattern] = field(default_factory=list)
+    implicit_assumptions: List[Dict] = field(default_factory=list)
+    saliency_map: Dict[int, str] = field(default_factory=dict)  # line -> critical/warning/safe
     migration_score: int = 100
+    migration_health: float = 1.0  # 0.0 (dangerous) to 1.0 (safe) — drift detection
     migration_level: str = "Easy"
     code_type: str = "python"  # python, cpp, dockerfile, requirements
     summary: Dict = field(default_factory=dict)
@@ -100,9 +106,22 @@ class AnalyzerAgent:
         self._check_known_issues(code, result)
         result.trace_log.append(f"⚠️ Checked for known incompatibilities → Found {len(result.known_issues)} issues")
         
-        # Calculate migration score
+        # Hardware-aware scan (Intrinsic-level analysis)
+        self._scan_hardware_issues(lines, result)
+        result.trace_log.append(f"🔬 Hardware-Aware Scan → Found {len(result.hardware_issues)} architecture-level issues")
+        
+        # Curiosity-driven exploration scan (implicit assumptions)
+        self._scan_implicit_assumptions(lines, code, result)
+        result.trace_log.append(f"🧪 Exploration Scan → Found {len(result.implicit_assumptions)} implicit CUDA assumptions")
+        
+        # Build saliency map (per-line risk scoring)
+        self._build_saliency_map(lines, result)
+        result.trace_log.append(f"🎯 Saliency Map → {sum(1 for v in result.saliency_map.values() if v == 'critical')} critical lines identified")
+        
+        # Calculate migration score + health
         self._calculate_score(result)
         result.trace_log.append(f"📊 Migration Score: {result.migration_score}/100 ({result.migration_level})")
+        result.trace_log.append(f"🩺 Migration Health: {result.migration_health:.0%} (drift detection)")
         
         # Build summary
         self._build_summary(result)
@@ -334,6 +353,98 @@ class AnalyzerAgent:
                     "fix": issue["fix"],
                 })
     
+    def _scan_hardware_issues(self, lines: List[str], result: AnalysisResult):
+        """Hardware-Aware Scan: Detect architecture-level issues that simple
+        API mapping would miss. Inspired by intrinsic-level PTQ analysis —
+        understanding what the hardware ACTUALLY does, not just what the API says."""
+        for i, line in enumerate(lines, 1):
+            # Check for WMMA / Tensor Core usage
+            for hw_pattern, info in HARDWARE_AWARE_MAPPINGS.items():
+                if hw_pattern == "32":
+                    # Special handling: only flag '32' if it's near warp-related context
+                    contexts = info.get("context", [])
+                    if "32" in line:
+                        # Check surrounding lines (±2) for warp context
+                        window = "\n".join(lines[max(0, i-3):min(len(lines), i+2)])
+                        if any(ctx in window for ctx in contexts):
+                            pattern = CUDAPattern(
+                                pattern="Hardcoded Warp Size: 32",
+                                line_number=i,
+                                line_content=line.strip(),
+                                category="hardware",
+                                severity="error",
+                                rocm_equivalent=info["replacement"],
+                                note=info["note"],
+                            )
+                            result.hardware_issues.append(pattern)
+                            result.detected_patterns.append(pattern)
+                else:
+                    if hw_pattern in line:
+                        pattern = CUDAPattern(
+                            pattern=hw_pattern,
+                            line_number=i,
+                            line_content=line.strip(),
+                            category="hardware",
+                            severity="error",
+                            rocm_equivalent=info["replacement"],
+                            note=info["note"],
+                        )
+                        result.hardware_issues.append(pattern)
+                        result.detected_patterns.append(pattern)
+    
+    def _scan_implicit_assumptions(self, lines: List[str], code: str, result: AnalysisResult):
+        """Curiosity-Driven Exploration Scan: Detect IMPLICIT CUDA assumptions
+        that aren't explicit API calls. Like curiosity-driven RL exploration —
+        we're looking for what the code DOESN'T say, not just what it does."""
+        for issue_key, issue in IMPLICIT_CUDA_PATTERNS.items():
+            matches = list(re.finditer(issue["regex"], code, re.MULTILINE))
+            if not matches:
+                continue
+            
+            context_required = issue.get("context_required", [])
+            
+            for match in matches:
+                # Find which line this match is on
+                line_num = code[:match.start()].count("\n") + 1
+                line_content = lines[line_num - 1] if line_num <= len(lines) else ""
+                
+                # If context is required, check surrounding lines
+                if context_required:
+                    window_start = max(0, line_num - 4)
+                    window_end = min(len(lines), line_num + 3)
+                    window = "\n".join(lines[window_start:window_end]).lower()
+                    if not any(ctx.lower() in window for ctx in context_required):
+                        continue
+                
+                result.implicit_assumptions.append({
+                    "key": issue_key,
+                    "line": line_num,
+                    "line_content": line_content.strip(),
+                    "severity": issue["severity"],
+                    "message": issue["message"],
+                    "fix": issue["fix"],
+                })
+    
+    def _build_saliency_map(self, lines: List[str], result: AnalysisResult):
+        """Build per-line saliency map — inspired by mixed-precision saliency
+        rescue in quantization research. Each line gets a risk level based on
+        how likely it is to cause silent failures on AMD hardware."""
+        # Mark lines from detected patterns
+        for p in result.detected_patterns:
+            current = result.saliency_map.get(p.line_number, "safe")
+            if p.severity == "error" or p.category == "hardware":
+                result.saliency_map[p.line_number] = "critical"
+            elif p.severity == "warning" and current != "critical":
+                result.saliency_map[p.line_number] = "warning"
+        
+        # Mark lines from implicit assumptions
+        for assumption in result.implicit_assumptions:
+            line = assumption["line"]
+            if assumption["severity"] == "critical":
+                result.saliency_map[line] = "critical"
+            elif result.saliency_map.get(line, "safe") != "critical":
+                result.saliency_map[line] = "warning"
+    
     def _calculate_score(self, result: AnalysisResult):
         """Calculate migration complexity score (100 = easiest)."""
         score = 100
@@ -345,6 +456,8 @@ class AnalyzerAgent:
         score -= len(result.header_includes) * 4          # -4 per header include
         score -= len(result.docker_patterns) * 3          # -3 per Docker pattern
         score -= len(result.known_issues) * 8             # -8 per known issue
+        score -= len(result.hardware_issues) * 12         # -12 per hardware-level issue (TOUGH)
+        score -= len(result.implicit_assumptions) * 6     # -6 per implicit assumption
         
         # Bonus for compatible PyTorch patterns
         compatible = sum(1 for p in result.pytorch_patterns if "compatible" in p.note.lower() or p.severity == "info")
@@ -363,6 +476,14 @@ class AnalyzerAgent:
             result.migration_level = "Complex"
         else:
             result.migration_level = "Advanced"
+        
+        # Migration Health (drift detection) — inspired by stateful drift monitoring
+        # Health degrades with critical issues and implicit assumptions
+        critical_count = sum(1 for v in result.saliency_map.values() if v == "critical")
+        warning_count = sum(1 for v in result.saliency_map.values() if v == "warning")
+        total_lines = max(1, len(result.saliency_map))
+        health = 1.0 - (critical_count * 0.15 + warning_count * 0.05)
+        result.migration_health = max(0.0, min(1.0, health))
     
     def _build_summary(self, result: AnalysisResult):
         """Build summary statistics."""
@@ -377,7 +498,11 @@ class AnalyzerAgent:
             "cli_tools": len(result.cli_tools),
             "packages": len(result.pip_packages),
             "known_issues": len(result.known_issues),
+            "hardware_issues": len(result.hardware_issues),
+            "implicit_assumptions": len(result.implicit_assumptions),
+            "critical_lines": sum(1 for v in result.saliency_map.values() if v == "critical"),
             "migration_score": result.migration_score,
+            "migration_health": result.migration_health,
             "migration_level": result.migration_level,
             "code_type": result.code_type,
             "warnings": sum(1 for p in result.detected_patterns if p.severity == "warning"),
