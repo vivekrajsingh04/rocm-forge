@@ -106,6 +106,11 @@ async def migrate_code(request: MigrationRequest):
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/api/samples")
+async def get_samples():
+    from samples.sample_codes import SAMPLES
+    return {k: {"title": v["title"], "code": v["code"]} for k, v in SAMPLES.items()}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

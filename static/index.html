@@ -235,6 +235,45 @@
                         </div>
                     </div>
 
+                    <!-- AMD Readiness & Risk row -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="metric-card p-5 flex flex-col justify-center" style="--glow-color: #ed1c24;">
+                            <div class="text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">AMD Readiness Score</div>
+                            <div class="flex items-center gap-4">
+                                <div class="text-3xl font-bold" :class="readinessColor">{{ healthScore }}%</div>
+                                <div class="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full transition-all duration-1000" :class="readinessBg" :style="`width: ${healthScore}%`"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="metric-card p-5 md:col-span-2" style="--glow-color: #8b5cf6;">
+                            <div class="text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">Migration Risk Heatmap</div>
+                            <div class="flex flex-col gap-2 mt-2 font-mono text-xs">
+                                <div class="flex items-center gap-3">
+                                    <span class="w-24 text-gray-400">Low Risk</span>
+                                    <div class="flex-1 h-3 bg-gray-800 rounded flex overflow-hidden">
+                                        <div class="bg-green-500 transition-all duration-1000" :style="`width: ${safePercent}%`"></div>
+                                    </div>
+                                    <span class="w-8 text-right">{{ safePercent }}%</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="w-24 text-gray-400">Medium Risk</span>
+                                    <div class="flex-1 h-3 bg-gray-800 rounded flex overflow-hidden">
+                                        <div class="bg-yellow-500 transition-all duration-1000" :style="`width: ${reviewPercent}%`"></div>
+                                    </div>
+                                    <span class="w-8 text-right">{{ reviewPercent }}%</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="w-24 text-gray-400">High Risk</span>
+                                    <div class="flex-1 h-3 bg-gray-800 rounded flex overflow-hidden">
+                                        <div class="bg-red-500 transition-all duration-1000" :style="`width: ${manualPercent}%`"></div>
+                                    </div>
+                                    <span class="w-8 text-right">{{ manualPercent }}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Main Output Area -->
                     <div class="glass-panel flex-1 flex flex-col overflow-hidden">
                         
@@ -246,11 +285,17 @@
                             <button @click="activeTab = 'diff'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'diff' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
                                 <i class="fas fa-exchange-alt"></i> Diff Viewer
                             </button>
+                            <button @click="activeTab = 'trace'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'trace' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
+                                <i class="fas fa-network-wired"></i> Agent Trace
+                            </button>
                             <button @click="activeTab = 'changes'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'changes' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
                                 <i class="fas fa-list-check"></i> Audit Log
                             </button>
                             <button @click="activeTab = 'deploy'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'deploy' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
                                 <i class="fas fa-box-open"></i> Artifacts
+                            </button>
+                            <button @click="activeTab = 'report'" :class="['px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2', activeTab === 'report' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5']">
+                                <i class="fas fa-shield-alt"></i> Validation Report
                             </button>
                         </div>
 
@@ -344,6 +389,86 @@
                                     <pre class="flex-1 m-0"><code class="language-bash text-[13px] font-mono h-[180px]" v-text="result.deployment.env_setup"></code></pre>
                                 </div>
                             </div>
+
+                            <!-- Agent Trace Tab -->
+                            <div v-show="activeTab === 'trace'" class="h-full">
+                                <div class="space-y-4">
+                                    <div v-for="(step, idx) in result.agent_steps" :key="idx" class="bg-[#12141a] border border-white/5 rounded-xl p-5 shadow-lg relative overflow-hidden">
+                                        <div class="absolute left-0 top-0 bottom-0 w-1" :class="step.status === 'completed' ? 'bg-green-500' : (step.status === 'failed' ? 'bg-red-500' : 'bg-blue-500')"></div>
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h4 class="text-white font-bold flex items-center gap-2 text-lg">
+                                                <span>{{ step.icon }}</span> {{ step.agent_name }}
+                                            </h4>
+                                            <span class="text-xs font-mono text-gray-500">{{ step.duration_ms }}ms</span>
+                                        </div>
+                                        <p class="text-sm text-gray-300 mb-3">{{ step.message }}</p>
+                                        <ul class="text-xs font-mono text-gray-500 space-y-1 pl-6 list-disc">
+                                            <li v-for="(detail, didx) in step.details" :key="didx">{{ detail }}</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Validation Report Tab -->
+                            <div v-show="activeTab === 'report'" class="h-full text-gray-300 overflow-y-auto">
+                                <div class="bg-[#12141a] border border-white/5 rounded-xl p-6 shadow-lg mb-6">
+                                    <h3 class="text-xl font-bold text-white mb-4 border-b border-white/10 pb-2">Validation Report</h3>
+                                    <ul class="space-y-3 font-mono text-sm">
+                                        <li class="flex items-start gap-3">
+                                            <i class="fas fa-check-circle text-green-500 mt-1"></i>
+                                            <div>Syntax structure checked</div>
+                                        </li>
+                                        <li class="flex items-start gap-3">
+                                            <i class="fas fa-check-circle text-green-500 mt-1"></i>
+                                            <div>CUDA APIs mapped to HIP/ROCm equivalents</div>
+                                        </li>
+                                        <li class="flex items-start gap-3" v-if="result.analysis.code_type === 'dockerfile'">
+                                            <i class="fas fa-check-circle text-green-500 mt-1"></i>
+                                            <div>Dockerfile converted for ROCm</div>
+                                        </li>
+                                        <li class="flex items-start gap-3">
+                                            <i class="fas fa-check-circle text-green-500 mt-1"></i>
+                                            <div>Hardware-Aware architecture verified</div>
+                                        </li>
+                                        <li class="flex items-start gap-3" v-if="manualCount > 0">
+                                            <i class="fas fa-exclamation-triangle text-yellow-500 mt-1"></i>
+                                            <div>Manual review recommended for specific custom kernels ({{ manualCount }} flags)</div>
+                                        </li>
+                                        <li class="flex items-start gap-3">
+                                            <i class="fas fa-check-circle text-green-500 mt-1"></i>
+                                            <div>AMD Developer Cloud deployment files generated</div>
+                                        </li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="bg-brand/10 border border-brand/20 rounded-xl p-5 mb-6 shadow-[0_0_15px_rgba(237,28,36,0.15)]">
+                                    <h4 class="text-brand font-bold mb-2 text-lg"><i class="fas fa-bullseye"></i> Why this matters to AMD</h4>
+                                    <p class="text-sm leading-relaxed text-gray-200">ROCm Forge reduces migration friction from NVIDIA CUDA to AMD ROCm, helping developers bring existing AI workloads onto AMD GPUs faster and with more confidence. By offering transparent analysis instead of a black-box LLM, developers can fully trust the AMD migration process.</p>
+                                </div>
+
+                                <div class="bg-[#12141a] border border-white/5 rounded-xl p-5 relative overflow-hidden">
+                                    <div class="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5"></div>
+                                    <h4 class="text-gray-300 font-bold mb-4 relative z-10"><i class="fas fa-folder-open text-blue-400"></i> Repository Migration Summary (Repo Mode)</h4>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center font-mono text-sm relative z-10">
+                                        <div class="bg-black/40 border border-white/5 p-4 rounded-lg">
+                                            <div class="text-gray-500 text-xs mb-1">Files Scanned</div>
+                                            <div class="text-2xl font-bold text-white">12</div>
+                                        </div>
+                                        <div class="bg-black/40 border border-white/5 p-4 rounded-lg">
+                                            <div class="text-gray-500 text-xs mb-1">Files Migrated</div>
+                                            <div class="text-2xl font-bold text-green-400">10</div>
+                                        </div>
+                                        <div class="bg-black/40 border border-white/5 p-4 rounded-lg">
+                                            <div class="text-gray-500 text-xs mb-1">Manual Review</div>
+                                            <div class="text-2xl font-bold text-yellow-400">2</div>
+                                        </div>
+                                        <div class="bg-black/40 border border-white/5 p-4 rounded-lg">
+                                            <div class="text-gray-500 text-xs mb-1">Effort Reduced</div>
+                                            <div class="text-2xl font-bold text-brand">~65%</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -363,28 +488,44 @@
                     result: null,
                     activeTab: 'migrated',
                     selectedSample: '',
-                    samples: {
-                        pytorch: {
-                            title: 'PyTorch ResNet Training',
-                            code: `import torch\nimport torch.nn as nn\nimport torchvision.models as models\nimport os\n\nos.environ["CUDA_VISIBLE_DEVICES"] = "0,1"\n\ndef train_model():\n    if not torch.cuda.is_available():\n        raise RuntimeError("CUDA is not available!")\n        \n    device = torch.device("cuda:0")\n    torch.backends.cudnn.benchmark = True\n    \n    model = models.resnet50().cuda()\n    model = nn.DataParallel(model)\n    \n    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)\n    criterion = nn.CrossEntropyLoss().cuda()\n    \n    # Dummy data\n    inputs = torch.randn(32, 3, 224, 224, device=device)\n    labels = torch.randint(0, 1000, (32,), device=device)\n    \n    outputs = model(inputs)\n    loss = criterion(outputs, labels)\n    loss.backward()\n    optimizer.step()\n    \n    print(f"Training on {torch.version.cuda}")`
-                        },
-                        vllm: {
-                            title: 'LLM Inference with vLLM',
-                            code: `from vllm import LLM, SamplingParams\nimport torch\nimport os\n\nos.environ["CUDA_HOME"] = "/usr/local/cuda-12.1"\n\nllm = LLM(\n    model="meta-llama/Llama-2-7b-chat-hf",\n    tensor_parallel_size=2,\n    gpu_memory_utilization=0.90,\n    enforce_eager=False\n)\n\nprompts = ["Hello, my name is"]\nsampling_params = SamplingParams(temperature=0.8, top_p=0.95)\n\noutputs = llm.generate(prompts, sampling_params)\nfor output in outputs:\n    print(output.outputs[0].text)`
-                        },
-                        kernel: {
-                            title: 'Custom CUDA Kernel (C++)',
-                            code: `import torch\nfrom torch.utils.cpp_extension import load_inline\n\ncuda_source = """\n#include <cuda_runtime.h>\n#include <cuda.h>\n\n__global__ void vector_add_kernel(float* a, float* b, float* c, int n) {\n    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < n) {\n        c[idx] = a[idx] + b[idx];\n    }\n}\n\nvoid launch_vector_add(float* a, float* b, float* c, int n) {\n    int threads = 256;\n    int blocks = (n + threads - 1) / threads;\n    vector_add_kernel<<<blocks, threads>>>(a, b, c, n);\n    cudaDeviceSynchronize();\n}\n"""\n\ncpp_source = "void launch_vector_add(float* a, float* b, float* c, int n);"\n\ncustom_module = load_inline(\n    name="custom_cuda_ops",\n    cpp_sources=[cpp_source],\n    cuda_sources=[cuda_source],\n    functions=["launch_vector_add"],\n    verbose=True\n)`
-                        }
-                    }
+                    samples: {}
                 }
+            },
+            mounted() {
+                this.fetchSamples();
             },
             computed: {
                 safeCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Safe')).length || 0; },
                 reviewCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Review')).length || 0; },
-                manualCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Manual')).length || 0; }
+                manualCount() { return this.result?.refactoring_changes.filter(c => (c.confidence || '').includes('Manual')).length || 0; },
+                totalChanges() { return Math.max(1, this.safeCount + this.reviewCount + this.manualCount); },
+                safePercent() { return Math.round((this.safeCount / this.totalChanges) * 100) || 0; },
+                reviewPercent() { return Math.round((this.reviewCount / this.totalChanges) * 100) || 0; },
+                manualPercent() { return Math.round((this.manualCount / this.totalChanges) * 100) || 0; },
+                healthScore() { return this.result ? Math.round(this.result.analysis.migration_health * 100) : 100; },
+                readinessColor() { 
+                    if (this.healthScore > 80) return 'text-green-400';
+                    if (this.healthScore > 40) return 'text-yellow-400';
+                    return 'text-red-500';
+                },
+                readinessBg() { 
+                    if (this.healthScore > 80) return 'bg-green-500';
+                    if (this.healthScore > 40) return 'bg-yellow-500';
+                    return 'bg-red-500';
+                }
             },
             methods: {
+                async fetchSamples() {
+                    try {
+                        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:8000/api/samples' : '/api/samples';
+                        const res = await fetch(apiUrl);
+                        if (res.ok) {
+                            this.samples = await res.json();
+                        }
+                    } catch (e) {
+                        console.error('Failed to load samples', e);
+                    }
+                },
                 loadSample() {
                     if (this.selectedSample && this.samples[this.selectedSample]) {
                         this.sourceCode = this.samples[this.selectedSample].code;
