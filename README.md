@@ -1,14 +1,3 @@
----
-title: ROCm Forge
-emoji: 🚀
-colorFrom: blue
-colorTo: indigo
-sdk: streamlit
-sdk_version: 1.32.0
-app_file: app.py
-pinned: false
----
-
 <div align="center">
   <img src="https://img.shields.io/badge/AMD-ROCm_Forge-ed1c24?style=for-the-badge&logo=amd&logoColor=white" alt="ROCm Forge" />
   
