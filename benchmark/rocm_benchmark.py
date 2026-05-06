@@ -56,7 +56,7 @@ def device_info_benchmark():
         device_info = {
             "index": i,
             "name": props.name,
-            "total_memory_gb": round(props.total_mem / (1024**3), 2),
+            "total_memory_gb": round(props.total_memory / (1024**3), 2),
             "multi_processor_count": props.multi_processor_count,
             "major": props.major,
             "minor": props.minor,
