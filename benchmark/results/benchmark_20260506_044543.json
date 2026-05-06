@@ -1,0 +1,93 @@
+{
+  "benchmark_version": "1.0",
+  "timestamp": "2026-05-06T04:45:43.146357",
+  "device_info": {
+    "timestamp": "2026-05-06T04:45:43.146363",
+    "pytorch_version": "2.9.0.dev20250821+rocm7.0.0.git125803b7",
+    "hip_version": "7.0.51831-a3e329ad8",
+    "gpu_count": 1,
+    "devices": [
+      {
+        "index": 0,
+        "name": "",
+        "total_memory_gb": 191.69,
+        "multi_processor_count": 304,
+        "major": 9,
+        "minor": 4
+      }
+    ]
+  },
+  "memory": {
+    "tests": [
+      {
+        "size_mb": 256,
+        "alloc_ms": 320.24,
+        "fill_ms": 0.56,
+        "bandwidth_gbps": 443.72,
+        "copy_d2d_ms": 1.59
+      },
+      {
+        "size_mb": 512,
+        "alloc_ms": 0.22,
+        "fill_ms": 0.18,
+        "bandwidth_gbps": 2846.91,
+        "copy_d2d_ms": 0.51
+      },
+      {
+        "size_mb": 1024,
+        "alloc_ms": 0.31,
+        "fill_ms": 0.28,
+        "bandwidth_gbps": 3601.42,
+        "copy_d2d_ms": 0.65
+      },
+      {
+        "size_mb": 2048,
+        "alloc_ms": 0.56,
+        "fill_ms": 0.45,
+        "bandwidth_gbps": 4484.34,
+        "copy_d2d_ms": 1.29
+      },
+      {
+        "size_mb": 4096,
+        "alloc_ms": 1.03,
+        "fill_ms": 0.87,
+        "bandwidth_gbps": 4611.29,
+        "copy_d2d_ms": 2.43
+      }
+    ]
+  },
+  "compute": {
+    "tests": [
+      {
+        "matrix_size": 1024,
+        "avg_ms": 0.03,
+        "tflops": 72.63
+      },
+      {
+        "matrix_size": 2048,
+        "avg_ms": 0.18,
+        "tflops": 97.48
+      },
+      {
+        "matrix_size": 4096,
+        "avg_ms": 1.22,
+        "tflops": 112.33
+      },
+      {
+        "matrix_size": 8192,
+        "avg_ms": 9.13,
+        "tflops": 120.45
+      },
+      {
+        "matrix_size": "4096_fp16",
+        "avg_ms": 0.25,
+        "tflops": 541.4
+      },
+      {
+        "matrix_size": "8192_fp16",
+        "avg_ms": 1.82,
+        "tflops": 603.09
+      }
+    ]
+  }
+}
