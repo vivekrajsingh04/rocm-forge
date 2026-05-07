@@ -349,6 +349,10 @@ HARDWARE_AWARE_MAPPINGS = {
     "nvcuda::wmma": {
         "replacement": "rocwmma",
         "note": "Library Abstraction: Replaced nvcuda::wmma namespace with rocwmma."
+    },
+    "wmma::": {
+        "replacement": "rocwmma::",
+        "note": "Library Abstraction: Replaced NVIDIA wmma namespace with AMD rocwmma. Verification required."
     }
 }
 
