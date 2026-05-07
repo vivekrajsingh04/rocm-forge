@@ -30,7 +30,7 @@ class RefactorerAgent:
     @staticmethod
     def _confidence(note: str) -> str:
         """Assign confidence level to a transformation."""
-        safe = ["Env var", "Path:", "CLI tool", "URL:", "Message:", "Header:"]
+        safe = ["Env var", "Path:", "CLI tool", "URL:", "Message:", "Header:", "Base image:", "Docker:", "CLI:"]
         review = ["Inline CUDA", "API:", "Library:", "Attention:", "Package:", "Variable:"]
         # If the note matches a safe pattern, it's safe
         for s in safe:
