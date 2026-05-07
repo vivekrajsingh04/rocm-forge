@@ -487,8 +487,30 @@ class AnalyzerAgent:
         # Health degrades with critical issues and implicit assumptions
         critical_count = sum(1 for v in result.saliency_map.values() if v == "critical")
         warning_count = sum(1 for v in result.saliency_map.values() if v == "warning")
-        total_lines = max(1, len(result.saliency_map))
-        health = 1.0 - (critical_count * 0.15 + warning_count * 0.05)
+        hw_issue_count = len(result.hardware_issues)
+        implicit_critical = sum(1 for a in result.implicit_assumptions if a.get("severity") == "critical")
+        
+        # Health formula: critical/hardware issues are the real danger.
+        # Warnings (API swaps, env vars) are automatable → minimal penalty.
+        # Hardware issues (warp size, WMMA intrinsics) → heavy penalty.
+        health = 1.0 - (
+            hw_issue_count * 0.20         # -20% per hardware-level issue (warp, WMMA, etc.)
+            + implicit_critical * 0.15    # -15% per implicit critical assumption (PTX, tensor cores)
+            + critical_count * 0.05       # -5% per critical saliency line
+            + warning_count * 0.002       # -0.2% per warning (automatable, minor penalty)
+        )
+        
+        # Code-type-specific floors:
+        # Python/Dockerfile with no hardware issues are inherently highly AMD-ready
+        # because PyTorch's .cuda() API works transparently on ROCm.
+        if hw_issue_count == 0 and implicit_critical == 0:
+            if result.code_type == "python":
+                health = max(health, 0.95)   # PyTorch code → 95%+ readiness
+            elif result.code_type == "dockerfile":
+                health = max(health, 0.85)   # Dockerfiles → 85%+ readiness
+            elif result.code_type == "cpp":
+                health = max(health, 0.70)   # Plain C++ (no WMMA) → 70%+ readiness
+            
         result.migration_health = max(0.0, min(1.0, health))
     
     def _build_summary(self, result: AnalysisResult):

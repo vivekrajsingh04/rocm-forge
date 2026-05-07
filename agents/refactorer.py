@@ -263,7 +263,7 @@ class RefactorerAgent:
                                     "original": original.strip(),
                                     "modified": modified.strip(),
                                     "note": hw_info["note"],
-                                    "confidence": "⚠️ Review",
+                                    "confidence": "🔧 Manual",
                                 })
                 else:
                     if hw_key in modified:
@@ -274,7 +274,7 @@ class RefactorerAgent:
                             "original": original.strip(),
                             "modified": modified.strip(),
                             "note": hw_info["note"],
-                            "confidence": "⚠️ Review",
+                            "confidence": "🔧 Manual",
                         })
             final_lines.append(modified)
         
