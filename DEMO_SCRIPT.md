@@ -1,101 +1,88 @@
-# ROCm Forge — 3.5 Minute Presentation Script (The "War Story" Version)
+# 🚀 ROCm Forge: The Ultimate Pitch & Live Demo Script
 
-> **Total time: 3 min 30 sec**  
-> Structure: The Nightmare (30s) → The Hero (30s) → Live Demo (1.5 min) → The Engine Room (30s) → The Drop (30s)
-
----
-
-## 🎬 SLIDE 1: The Nightmare (0:00 – 0:30)
-
-**[Show a slide of a developer crying, or just the empty ROCm Forge UI]**
-
-> *"Let me tell you a story about a developer who tried to migrate a massive CUDA codebase to AMD's ROCm."*
->
-> *"He thought, 'Oh, I'll just use a Find-and-Replace tool! Just change `cuda` to `hip` everywhere. Easy!' ... Three weeks later, his code compiled perfectly. He ran it. And the math was completely, horribly wrong."*
->
-> *"Why? Because standard string replacements don't know that NVIDIA warps are 32 threads wide, but AMD wavefronts are 64. They don't know how to map Tensor Core intrinsics to AMD Matrix Cores. They don't read the hardware manuals."*
->
-> *"Migrating isn't a text problem. It's a hardware problem. That’s why we built ROCm Forge."*
+*This script is designed to be conversational, confident, and highly impactful. It directly addresses the judges' technical backgrounds while keeping the narrative extremely simple and easy to follow.*
 
 ---
 
-## 🎬 SLIDE 2: The Hero (0:30 – 1:00)
+## 🎙️ PART 1: The Hook & The "Why Us?" (0:00 – 1:00)
 
-**[Switch to ROCm Forge UI — show the header: "9-Agent Migration Engine"]**
+**[Screen is showing the dark, sleek ROCm Forge UI]**
 
-> *"ROCm Forge is an autonomous, multi-agent AI copilot that acts like a senior engineer who has actually read both the NVIDIA and AMD hardware specs."*
->
-> *"Instead of just regex, we use a 9-Agent pipeline.*
-> *- First, an **AST-level Python Transformer** that actually understands code structure, not just strings.*
-> *- Second, a **Hardware-Aware Scanner** that catches those silent mathematical bugs before they ruin your weekend.*
-> *- And third, a **Build Error Copilot** that predicts exactly why your code will crash on compile, and fixes it."*
->
-> *"Let me show you how it works."*
+**You:** 
+"Hi everyone, we are Team Cipher, and this is ROCm Forge. 
 
----
+To migrate code from NVIDIA to AMD, you might think it's as simple as finding the word 'cuda' and replacing it with 'hip'. I guarantee you, several teams today built exactly that—a basic regex 'Find and Replace' tool. 
 
-## 🎬 LIVE DEMO (1:00 – 2:30) ⭐ THE MONEY SHOT
+Here is why ROCm Forge is entirely different: **We built a compiler-level, 9-Agent AI Architecture.** 
 
-### Demo Move 1: The Easy Win (1:00 – 1:20)
+Other tools just read text. ROCm Forge actually understands the physical hardware differences between an NVIDIA H100 and an AMD MI300X. It predicts build errors *before* you compile. It flags silent mathematical failures. We aren't just changing words; we are doing deep architectural translation.
 
-**[Select "PyTorch ResNet Training" from the dropdown → Click MIGRATE]**
-
-> *"Let's start with a standard PyTorch script. We click migrate."*
-
-**[Point to the metrics that appear]**
-
-> *"Boom. Our 9 agents fire off. Look at this beautiful dashboard—Migration Score: 72. AMD Readiness: 95%. Everything is green. The Agent Trace tab shows exactly what our AI did at the syntax tree level. It’s an easy win."*
-> 
-> *"But wait. Hackathons are about doing the hard stuff, right?"*
-
-### Demo Move 2: The Final Boss (1:20 – 2:30)
-
-**[Select "Tensor Core WMMA Kernel" from the dropdown → Click MIGRATE]**
-
-> *"Let's feed it the final boss: A low-level C++ Tensor Core GEMM kernel using WMMA intrinsics. A normal Find-and-Replace tool would look at this and just give up."*
-
-**[Point to the banner]**
-
-> *"Look at the dashboard now. Migration Score hits ZERO. The Risk Heatmap is glowing bright red. ROCm Forge is basically screaming at us."*
-
-**[Click "Agent Trace" tab]**
-
-> *"But look at why! The Hardware-Aware Scanner caught a hardcoded warp size of 32—that right there is the bug that would have silently ruined the math on AMD's 64-wide hardware."*
->
-> *"The Build Error Copilot is already telling us: 'Hey, you need to add `rocwmma.hpp` and link `-lrocblas` or the compiler will throw a tantrum.'"*
-
-**[Click "Validation Report" tab]**
-
-> *"The Validation Report gives us a complete checklist. It didn't just blind-translate the code; it diagnosed the hardware mismatches. We catch this because we analyze the AST and the hardware, not just the text."*
+Let me show you exactly what I mean."
 
 ---
 
-## 🎬 SLIDE 3: The Engine Room (2:30 – 3:00)
+## 💻 PART 2: The Live Demo (1:00 – 3:00)
 
-**[Show the Mermaid architecture diagram from README or a slide]**
+### Click 1: PyTorch ResNet (The Standard Case)
+**[Select "PyTorch ResNet Training" → Click MIGRATE]**
 
-> *"Under the hood, this isn't just a simple ChatGPT wrapper. It’s a 9-agent orchestration pipeline."*
->
-> *"We have exploration scanners looking for implicit assumptions, verification passes that double-check the work, and we even built a ready-to-fire benchmark suite to test memory bandwidth and TFLOPS directly on AMD MI300X GPUs."*
+**You:**
+"Let’s start simple. A standard PyTorch training script. We click migrate."
 
----
-
-## 🎬 SLIDE 4: The Drop (3:00 – 3:30)
-
-> *"ROCm Forge reduces the friction of moving to AMD by 65%. Whether it's a Python script, a Dockerfile, or a terrifying Tensor Core kernel, it handles it."*
->
-> *"We are moving migration from 'Find and Replace and Pray' to 'Hardware-Aware and Autonomous.'"*
->
-> *"Thank you. We're Team Cipher."*
+**[Point to the green 95% AMD Readiness Score]**
+"Our 9 agents fire off instantly. Look at the dashboard: AMD Readiness is 95%. Everything is green. The AI knows that PyTorch's `.cuda()` API actually works transparently on ROCm, so it marks this as low-risk and gives us the green light to deploy. For simple scripts, it's an easy win."
 
 ---
 
-## 📋 Recording Tips
+### Click 2: Hugging Face & vLLM (The AI Ecosystem)
+**[Select "Hugging Face Fine-Tuning" → Click MIGRATE]**
+*(Wait 2 seconds)*
+**[Select "LLM Inference with vLLM" → Click MIGRATE]**
 
-| # | Tip |
-|---|-----|
-| 1 | **Smile at the start** — it sets the tone for the funny intro |
-| 2 | **The WMMA demo is your KILLER MOMENT** — act genuinely excited when the score hits 0 |
-| 3 | **Show the Agent Trace tab animating** — it looks incredible |
-| 4 | **Use Loom or OBS** — screen capture + voiceover |
-| 5 | **Keep webcam off** — let them focus entirely on the screen and your voice |
+**You:**
+"What about modern generative AI? If we load a Hugging Face QLoRA script or a vLLM server... same result. The AI intelligently swaps NVIDIA wheels for ROCm wheels, handles `bitsandbytes`, and changes environment variables like `CUDA_VISIBLE_DEVICES` to `HIP_VISIBLE_DEVICES`. High readiness, ready to run."
+
+---
+
+### Click 3: Dockerfile (Infrastructure)
+**[Select "Dockerfile (NVIDIA CUDA Base)" → Click MIGRATE]**
+
+**You:**
+"It even handles infrastructure. If I give it a production Dockerfile, the Deployer Agent automatically rips out the NVIDIA base images and injects the exact ROCm 6.2 Ubuntu images, removing obsolete NVIDIA driver flags along the way."
+
+---
+
+### Click 4: The Final Boss (The Differentiator)
+**[Select "Tensor Core WMMA Kernel" → Click MIGRATE]**
+
+**You:**
+"But here is where we separate ourselves from everyone else. I’m going to feed it the 'Final Boss'—a low-level C++ Tensor Core kernel using NVIDIA WMMA intrinsics. A normal Find-and-Replace tool would swap the headers and call it a day... which would result in a broken, compiling nightmare."
+
+**[Point to the dashboard turning RED and 0%]**
+"Look at ROCm Forge. The Readiness Score plunges to ZERO. The Risk Heatmap is glowing red. The engine is literally screaming at us."
+
+**[Click on the "Agent Trace" Tab]**
+"And here is why: Our Hardware-Aware Scanner caught something critical. It found a hardcoded warp size of 32. If we just deployed this on an AMD GPU, which uses a 64-wide wavefront, it would silently compute the wrong math. 
+
+Our Build Error Copilot goes even further, warning us to link the `-lrocblas` library to avoid a compiler crash. *This* is the power of a 9-Agent architecture."
+
+---
+
+## 🎯 PART 3: The Close (3:00 – 3:30)
+
+**[Switch back to the main UI]**
+
+**You:**
+"ROCm Forge doesn’t just migrate code. It protects engineers from days of debugging hardware-level compiler errors. 
+
+We’ve packaged an enterprise-grade migration consultant into a sleek, instant AI tool. Thank you, and we’d love to answer your questions."
+
+---
+
+## 🧠 Cheat Sheet: If Judges ask "What are the 9 Agents?"
+If they ask, confidently list a few of the coolest ones to show off your backend engineering:
+1. **Hardware-Aware Scanner:** Looks for implicit hardware assumptions (like Warp Size 32 vs 64).
+2. **Build Error Copilot:** Cross-references code against a runbook of common ROCm compiler errors to fix them before compilation.
+3. **Health Monitor:** Calculates the AMD Readiness score and drift detection.
+4. **Deployer Agent:** Specifically handles Docker, dependencies, and environment setup.
+5. **AST Refactorer:** Does semantic syntax-tree replacement, not just regex.
